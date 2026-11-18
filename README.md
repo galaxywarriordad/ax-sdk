@@ -36,3 +36,6 @@ ax-sdk/
 ├── ax_toolchain/           # Shared Clang 23+ ThinLTO & 3-Phase PGO CMake presets
 ├── Scripts/                # Cross-platform build & validation helpers
 └── CMakeLists.txt          # Static library target (ax::core)
+
+🤝 License
+Licensed under the MIT License (LICENSE) for seamless integration across GPL-3.0, MPL-2.0, and MIT emulator codebases.
