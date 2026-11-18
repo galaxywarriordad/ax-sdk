@@ -10,10 +10,10 @@ A lightweight, dependency-free C++20 runtime library (`libax_core`) powering **T
 
 | Project | Role | Primary Repository | Mirror / Upstream |
 | :--- | :--- | :--- | :--- |
-| **Piccolo `[AX]`** | `< 300 MB` Bare-Metal Linux Console OS | [GitHub (`Piccolo-AX`)](https://github.com) | Base: [Batocera Linux](https://github.com) |
-| **`ax-sdk`** | Shared C++20 Runtime Core (`libax_core`) | [GitHub (`ax-sdk`)](https://github.com) | Dependency-Free Core |
-| **Eden Espresso Wave `[AX]`** | Nintendo Switch (Windows 10 Bridge + Linux) | [Eden Forgejo](https://eden-emu.dev) | Mirror: [GitHub](https://github.com) · Upstream: [Eden](https://eden-emu.dev) |
-| **Cemu Latte `[AX]`** | Nintendo Wii U (Win10 PGO + Batocera `[AX]`) | [GitHub (`Cemu-Latte-AX`)](https://github.com) | Upstream: [Cemu](https://github.com) |
+| **Piccolo `[AX]`** | `< 300 MB` Bare-Metal Linux Console OS | [GitHub (`Piccolo-AX`)](https://github.com/galaxywarriordad/Piccolo-AX) | Base: [Batocera Linux](https://github.com/batocera-linux/batocera.linux) |
+| **`ax-sdk`** | Shared C++20 Runtime Core (`libax_core`) | [GitHub (`ax-sdk`)](https://github.com/galaxywarriordad/ax-sdk) | Dependency-Free Core |
+| **Eden Espresso Wave `[AX]`** | Nintendo Switch (Windows 10 Bridge + Linux) | [Eden Forgejo](https://git.eden-emu.dev/galaxywarriordad/Eden-Espresso-Wave-AX.git) | Mirror: [GitHub](https://github.com/galaxywarriordad/Eden-Espresso-Wave-AX) · Upstream: [Eden](https://git.eden-emu.dev/eden-emu/eden/) |
+| **Cemu Latte `[AX]`** | Nintendo Wii U (Win10 PGO + Batocera `[AX]`) | [GitHub (`Cemu-Latte-AX`)](https://github.com/galaxywarriordad/Cemu-Latte-AX) | Upstream: [Cemu](https://github.com/cemu-project/Cemu) |
 
 ---
 
@@ -36,10 +36,3 @@ ax-sdk/
 ├── ax_toolchain/           # Shared Clang 23+ ThinLTO & 3-Phase PGO CMake presets
 ├── Scripts/                # Cross-platform build & validation helpers
 └── CMakeLists.txt          # Static library target (ax::core)
-```
-
----
-
-## 🤝 License
-
-Licensed under the **MIT License** (`LICENSE`) for seamless integration across `GPL-3.0`, `MPL-2.0`, and `MIT` emulator codebases.
