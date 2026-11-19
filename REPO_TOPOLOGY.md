@@ -1,12 +1,11 @@
 ## 🌐 AX Ecosystem: 4-Repository Topology & Lineage
 
-The **AX Project** unifies shared low-level C++20 silicon abstractions (`ax-sdk`) with platform- and emulator-specific forks across Windows 10/11 and bare-metal Linux.
+The **AX Project** unifies shared low-level C++20 silicon abstractions (`ax-sdk`) with platform- and emulator-specific forks across Windows 10/11 and bare-metal Linux[cite: 4, 6, 22].
 
 ```text
                     +-------------------------------------------------------+
-
                     |                        ax-sdk                         |
-                    |        https://github.com     |
+                    |   [https://github.com/galaxywarriordad/ax-sdk](https://github.com/galaxywarriordad/ax-sdk)          |
                     |  Shared C++20 Silicon Core, Dynamic SMT/CCX Topology, |
                     |  Platform Shims, Telemetry Schemas & Master Specs     |
                     +-------------------------------------------------------+
@@ -15,13 +14,11 @@ The **AX Project** unifies shared low-level C++20 silicon abstractions (`ax-sdk`
                      /                          |                          \
                     v                           v                           v
 +----------------------------------+  +----------------------------------+  +----------------------------------+
-
 |     Eden-Espresso-Wave-AX        |  |           Piccolo-AX             |  |          Cemu-Latte-AX           |
-|   (Forgejo — Upstream Eden Fork) |  |  (GitHub — Batocera Linux Branch)|  |    (GitHub — Wii U AX Fork)    |
+| (Forgejo / Git — Switch Fork)    |  | (GitHub — Batocera Linux Branch) |  |   (GitHub — Wii U AX Fork)       |
 | Windows 10/11 Master Engine,     |->|  Batocera Branch of Espresso Wave|  |  Wii U / Latte GPU Desktop &     |
 | LLVM 23 PGO, FlexASIO & QSV      |  |  < 300 MB toram 6.12-rt Appliance|  |  Linux Fork Powered by ax::core  |
 +----------------------------------+  +----------------------------------+  +----------------------------------+
-```
 
 ### Repository Breakdown & Lineage
 
