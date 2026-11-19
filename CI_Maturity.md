@@ -34,8 +34,7 @@ This roadmap serves as both an **engineering execution checklist** and a **contr
 1. **For `ax-sdk` Maintainers & Contributors:** Each maturity level (`Level 1` through `Level 5`) maps directly to a concrete release milestone (`v1.36.0` → `v1.39+`), defining the exact GitHub Actions workflows, `CTest` suites, and sanitizer gates required before bumping semantic versions.
 2. **For Downstream Emulator Fork Authors (`Eden`, `Cemu`, `RPCS3`, `shadPS4`, `Xenia`):** Downstream teams can check `ax-sdk`'s active maturity badge to verify ABI/API stability guarantees, inspect supported `ax::Telemetry` OSD hooks, and rely on automated canary builds to catch integration issues before updating `FetchContent` tags.
 3. **For `Piccolo-AX` Appliance & Bare-Metal Testers:** Level 5 defines the objective pass/fail hardware gates (`0` audio underruns, `< 5.50 GiB` Maxwell VRAM ceiling, `0` `LOC` timer ticks on isolated cores, and `< 300 MB` `toram` EROFS footprint) required to certify a release for bare-metal deployment.
-
-4. ---
+---
 
 ## 📈 The Five-Level CI & SDK Maturity Roadmap
 
