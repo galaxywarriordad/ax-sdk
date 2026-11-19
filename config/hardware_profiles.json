@@ -3,8 +3,7 @@
   "schema_version": "2.1",
   "enforced_policies": {
     "hyperthreading_smt": "DISABLED_IN_BIOS",
-    "igpu_astc_offload_policy": "ENABLE_IF_UHD630_OR_HD530_PRESENT",
-    "audio_dac_target": "Speakers (HiBy USB Audio)"
+    "igpu_astc_offload_policy": "ENABLE_IF_UHD630_OR_HD530_PRESENT"
   },
   "backlog": [
     {
@@ -15,7 +14,7 @@
   ],
 
   "common_qt_config": {
-    "_comment_common": "Baseline settings enforced across all preserved Intel + NVIDIA rigs",
+    "_comment_common": "Baseline settings enforced across all preserved Intel + NVIDIA rigs; set rig-specific audio_device in local consumer overrides",
     "Renderer|backend": "1",
     "Renderer|vulkan_device": "0",
     "Renderer|use_vsync": "0",
@@ -25,7 +24,7 @@
     "LibraryApplet|player_select_applet_mode": "0",
     "LibraryApplet|mii_edit_applet_mode": "0",
     "Audio|output_engine": "2",
-    "Audio|output_device": "Speakers (HiBy USB Audio)",
+    "Audio|output_device": "auto",
     "Debugging|perform_vulkan_check": "false",
     "Miscellaneous|log_filter": "\"*:Debug\"",
     "Miscellaneous|flush_line": "true"
@@ -111,7 +110,7 @@
       "masks": {
         "audio_irq": "0x01",
         "vulkan_submit": "0x02",
-        "jit_workers": "0x04",
+        "jit_workers": "0x0C",
         "storage_aux": "0x08",
         "full_mask": "0x0F"
       },
