@@ -7,15 +7,30 @@ on:
     branches: [ main ]
 
 jobs:
-  validate-and-build:
+  validate-json:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Validate hardware_profiles.json
         run: python3 -m json.tool config/hardware_profiles.json > /dev/null
 
-      - name: Configure and build ax-sdk
+  build-linux:
+    needs: validate-json
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure and build ax-sdk (Linux Ninja)
         run: |
           cmake -B build -G Ninja
+          cmake --build build
+
+  build-windows:
+    needs: validate-json
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure and build ax-sdk (Windows clang-cl)
+        shell: pwsh
+        run: |
+          cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl
           cmake --build build
