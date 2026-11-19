@@ -8,7 +8,7 @@ A lightweight, dependency-free C++20 runtime library (`libax_core` / `ax::core`)
 
 ## 🔗 The Silicon Preservation Society — Official Repository Network
 
-*(See [REPO_TOPOLOGY.md](REPO_TOPOLOGY.md) for the full cross-host dependency diagram.)*
+*(See `REPO_TOPOLOGY.md` for the full cross-host dependency diagram and the **Policy-in-SDK / Adapter-in-Consumer** boundary contract.)*
 
 | Project | Role | Canonical Repository | Base / Upstream |
 | :--- | :--- | :--- | :--- |
