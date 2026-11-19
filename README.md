@@ -29,13 +29,19 @@ A lightweight, dependency-free C++20 runtime library (`libax_core` / `ax::core`)
 
 ---
 
-## 📚 Shared Architecture Specifications (`docs/`)
+## 📚 Shared Architecture Specifications
 
-* [Unified Dual-Target Master Plan (`v1.3`)](docs/UNIFIED_MASTER_PLAN.md)
-* [Unified Multi-Architecture Silicon Topology Plan](docs/SILICON_TOPOLOGY_PLAN.md)
-* [Unified Subsystem Integration Plan (`v1.1`)](docs/Unified_Subsystem_Integration_1.1.md)
-* [Engineering & Industry Benchmark Assessment](docs/Benchmark_Assessment.md)
-* [Comprehensive Engineering & Architectural Audit](docs/audits/Comprehensive%20Engineering%20%26%20Architectural%20Audit.md)
+### Core SDK & Ecosystem Contracts (`ax-sdk`)
+* [AX Ecosystem Topology & Boundary Contract](REPO_TOPOLOGY.md)
+* [CI/CD & Quality Maturity Roadmap](CI_Maturity.md)
+* [Declarative Silicon Profile Matrix (`v2.1`)](config/hardware_profiles.json)
+
+### Reference Architecture & Audit Specs (`Eden-Espresso-Wave-AX`)
+* [Unified Dual-Target Master Plan (`v1.3`)](https://eden-emu.dev)
+* [Unified Multi-Architecture Silicon Topology Plan](https://eden-emu.dev)
+* [Unified Subsystem Integration Plan (`v1.1`)](https://eden-emu.dev)
+* [Engineering & Industry Benchmark Assessment](https://eden-emu.dev)
+* [Comprehensive Engineering & Architectural Audit](https://eden-emu.dev)
 
 ---
 
