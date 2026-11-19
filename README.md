@@ -56,4 +56,4 @@ ax-sdk/
 ## 🤝 Contributing & License
 
 * **Contributing:** See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md) for compiler hygiene (`clang-cl` 23+ `-Werror`) and hardware-privilege notes.
-* **License:** Licensed under the **MIT License** ([LICENSE](LICENSE)) for seamless integration across GPL-3.0, MPL-2.0, and MIT emulator codebases[cite: 30].
+* **License:** Licensed under the **MIT License** ([LICENSE](LICENSE)) for seamless integration across GPL-3.0, MPL-2.0, and MIT emulator codebases.
