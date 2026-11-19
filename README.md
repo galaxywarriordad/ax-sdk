@@ -49,17 +49,21 @@ A lightweight, dependency-free C++20 runtime library (`libax_core` / `ax::core`)
 
 ```text
 ax-sdk/
+├── ax_toolchain/           # Cross-platform compiler & toolchain presets
+├── config/                 # Declarative silicon profile matrix (hardware_profiles.json) & engine INI schema
 ├── include/ax/             # Public C++20 headers (topology, memory, igpu, vram, audio)
 ├── src/                    # Zero-dependency C++20 implementation
-├── config/                 # Unified runtime engine INI schema (eden_engine.ini)
-├── scripts/win32/          # Hardware validation, MSI IRQ steering & telemetry scripts
-├── docs/                   # Cross-platform master specs, topology plans & audits
+├── REPO_TOPOLOGY.md        # 4-repository lineage & Policy-in-SDK boundary contract
+├── CI_Maturity.md          # CMM Levels 1–5 quality & Hardware-in-the-Loop roadmap
 └── CMakeLists.txt          # CMake target (libax_core / ax::core)
 ```
+
+---
+
 ## 🗺️ What's Next — `ax-sdk` Runtime Roadmap & `Espresso` Proof Points
 
 ### Proven in Production: `Eden Espresso Wave [AX]` (`v1.35.1`)
-`ax-sdk` (`v1.35.0`) is actively powering **`Eden Espresso Wave [AX]`** on reference desktop hardware (`Intel Core i5-9600K` + `NVIDIA GTX 980 Ti 6 GB` + `Intel UHD Graphics 630`), demonstrating measurable stability and frame-pacing gains without upstream codebase pollution:
+`ax-sdk` (`v1.35.1`) is actively powering **`Eden Espresso Wave [AX]`** on reference desktop hardware (`Intel Core i5-9600K` + `NVIDIA GTX 980 Ti 6 GB` + `Intel UHD Graphics 630`), demonstrating measurable stability and frame-pacing gains without upstream codebase pollution:
 
 * **Deterministic `2:3:1` Core & IRQ Partitioning (`ax::topology`):** Pins real-time USB DAC audio/timing (`0x01`), Vulkan command submission (`0x02`), ARM64 JIT worker fibers (`0x1C`), and background ZSTD/FFmpeg decompression (`0x20`) to match steered PCIe/USB/AHCI interrupts—eliminating cross-core thread migration and audio dropouts.
 * **Maxwell `GM200` VRAM & PCIe BAR1 Protection (`ax::vram`):** Guards 6 GB Maxwell/Pascal cards against driver-level shared-memory thrashing via runtime `FP16 → FP32` shader promotion and a bounded **`128 MiB` `HOST_VISIBLE` BAR1** staging ceiling.
