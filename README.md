@@ -24,7 +24,7 @@ A lightweight, dependency-free C++20 runtime library (`libax_core` / `ax::core`)
 * **Deterministic Topology (`ax::topology`):** Enforces `2:3:1` Non-SMT and dynamic Intel SMT / AMD CCX physical core affinity masks alongside real-time thread priorities (`SCHED_FIFO` / MMCSS).
 * **Zero-Overhead Memory (`ax::memory`):** `1G`/`2M` HugeTLB and Windows Large-Page fastmem allocators with single-cycle `BMI1` (`_bextr_u64`) page translation.
 * **Intel iGPU Offloading (`ax::igpu`):** Offloads hardware video decoding (`QSV` / `VA-API` / `VEBOX`) and compute texture unswizzling onto Intel UHD Graphics.
-* **VRAM Safeguards (`ax::vram`):** Speculative `5.50 GB` (`5.35 GB` under frame generation) DXGI/Vulkan VRAM shield protecting 6 GB GPUs (such as Maxwell GM200 / Pascal) from allocation spikes.
+* **VRAM & BAR1 Safeguards (`ax::vram`):** Per-GPU Vulkan VRAM ceilings and reap triggers (`3.50 GiB`–`10.00 GiB` via `config/hardware_profiles.json`), bounded `128 MiB`/`256 MiB` `HOST_VISIBLE` BAR1 staging pools, and runtime `FP16 → FP32` shader promotion protecting Maxwell (`GM200`/`GM204`), Pascal (`GP102`/`GP104`), and Turing (`TU116`) cards from shared-memory thrashing.
 * **Bit-Perfect Audio Ring (`ax::audio`):** Lock-free, cache-line-aligned PCM ring buffer targeting `2.00 ms` ALSA / `2.67 ms` ASIO exclusive USB DAC playback.
 
 ---
