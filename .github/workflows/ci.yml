@@ -1,0 +1,21 @@
+name: ax-sdk CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate hardware_profiles.json
+        run: python3 -m json.tool config/hardware_profiles.json > /dev/null
+
+      - name: Configure and build ax-sdk
+        run: |
+          cmake -B build -G Ninja
+          cmake --build build
