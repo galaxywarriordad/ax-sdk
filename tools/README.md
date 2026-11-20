@@ -20,7 +20,7 @@ All scripts resolve silicon thresholds from `../config/hardware_profiles.json` (
 ## 🚀 Usage Examples Across Repositories
 
 ### 1. From `Eden-Espresso-Wave-AX` (`PGO_config.bat` / `PGO_stage*.bat`)
-
+    
     powershell -NoProfile -ExecutionPolicy Bypass -File "%AX_SDK_DIR%\tools\clean_all.ps1" -ProjDir "%PROJ_DIR%" -Wait
 
     powershell -NoProfile -ExecutionPolicy Bypass -File "%AX_SDK_DIR%\tools\check_hardware.ps1" -TargetApp eden -RepoRoot "%PROJ_DIR%"
@@ -28,7 +28,7 @@ All scripts resolve silicon thresholds from `../config/hardware_profiles.json` (
     start "" /B powershell -NoProfile -ExecutionPolicy Bypass -File "%AX_SDK_DIR%\tools\track_telemetry.ps1" -ProcessName eden -ConfigPath "ax_engine.ini"
 
 ### 2. From `Cemu-Latte-AX`
-
+    
     powershell -NoProfile -ExecutionPolicy Bypass -File "%AX_SDK_DIR%\tools\check_hardware.ps1" -TargetApp Cemu -RepoRoot "%PROJ_DIR%"
 
     start "" /B powershell -NoProfile -ExecutionPolicy Bypass -File "%AX_SDK_DIR%\tools\track_telemetry.ps1" -ProcessName Cemu -ConfigPath "ax_engine.ini" -OutputJsonPath "cemu_telemetry.json"
