@@ -20,10 +20,9 @@ The **AX Project** unifies shared low-level C++20 silicon abstractions (`ax-sdk`
                     /                   |                 |                   \
                    v                    v                 v                    v
 +-------------------------+ +-------------------------+ +-------------------------+ +-------------------------+
-
 | Eden-Espresso-Wave-AX   | |       Piccolo-AX        | |      Cemu-Latte-AX      | |         FLAC_AX         |
 | (Forgejo — Switch Fork) | | (GitHub — Batocera OS)  | | (GitHub — Wii U Fork)   | | (GitHub — Audio Player) |
-| Windows 10/11 Master,   |>| < 300 MB toram EROFS,   | | Wii U / Latte GPU Fork  | | Bare-Metal Linux ESS    |
+| Windows 10/11 Master,   |>| < 512 MB toram EROFS,   | | Wii U / Latte GPU Fork  | | Bare-Metal Linux ESS    |
 | LLVM 23 PGO, ASIO & QSV | | 6.12-rt, ALSA & VA-API  | | Powered by ax::core     | | Sabre ALSA SCHED_FIFO   |
 +-------------------------+ +-------------------------+ +-------------------------+ +-------------------------+
 ```
@@ -36,7 +35,7 @@ The **AX Project** unifies shared low-level C++20 silicon abstractions (`ax-sdk`
 | :--- | :--- | :--- | :--- |
 | **`ax-sdk`** | GitHub: `galaxywarriordad/ax-sdk` | `MIT` | Zero-dependency C++20 silicon core (`libax_core` / `ax::core`), dynamic SMT/CCX topology resolver, unified settings schema (`ax_engine.ini`), shared-memory atomic telemetry + audio jitter profiler (`ax::telemetry`), declarative silicon matrix (`config/hardware_profiles.json`), and shared cross-app scripts (`tools/`). |
 | **`Eden-Espresso-Wave-AX`** | Forgejo: `galaxywarriordad/Eden-Espresso-Wave-AX` (GitHub Mirror) | `GPL-3.0` | **Windows 10/11 Switch Engine Master** — Features LLVM `clang-cl` 23+ 3-stage PGO, FlexASIO/Steinberg ASIO (`Core 0`), `5.00 GiB` async VRAM shield (`Core 1`), ARM64 JIT fibers (`Cores 2–4`), and Intel QSV / ZSTD L18 quarantine (`Core 5`). |
-| **`Piccolo-AX`** | GitHub: `galaxywarriordad/Piccolo-AX` | `GPL-3.0` | **Batocera Linux Console OS** — Out-of-tree `BR2_EXTERNAL` overlay adapting `[AX]` engines for `Linux 6.12-rt` (`PREEMPT_RT`, `NO_HZ_FULL`, `cgroup v2`) into a `< 300 MB` `toram` EROFS USB 3.0 appliance. |
+| **Piccolo-AX** | GitHub: galaxywarriordad/Piccolo-AX | GPL-3.0 | **Batocera Linux Console OS** — Out-of-tree BR2_EXTERNAL overlay packaging Eden (Switch), Cemu (Wii U), RMG (N64), BlastEm (Mega Drive), Frontier (Atari ST), Cannonball (OutRun), VICE (C64), and Chocolate Doom for Linux 6.12-rt (PREEMPT_RT, NO_HZ_FULL, cgroup v2) into a < 512 MB toram EROFS USB 3.0 appliance. |
 | **`Cemu-Latte-AX`** | GitHub: `galaxywarriordad/Cemu-Latte-AX` | `MPL-2.0` | **Nintendo Wii U (Latte GPU) Fork** — Integrates `ax::core` for PowerPC JIT isolation, Intel UHD 630 `VEBOX` video offloading, `5.50 GiB` VRAM protection, and zero-underrun USB DAC audio across Windows PGO and `Piccolo-AX`. |
 | **`FLAC_AX`** | GitHub: `galaxywarriordad/FLAC_AX` | `MIT` | **Bare-Metal Linux Semi-Pro Audio Appliance** — Deterministic high-resolution FLAC player targeting ESS Sabre ES9281PRO / ES9281AC Pro USB DACs (`hw:CARD=FC3,DEV=0`), pairing `Core 5` non-RT decoding with `Core 0` `SCHED_FIFO 80` ALSA (`96` frames / `2.00 ms`) via `ax::audio::LockFreeStereoRing`. |
 
@@ -53,7 +52,7 @@ To prevent configuration drift and eliminate duplicated instrumentation across 5
 | **3. Eden Switch Adapter** | **`Eden-Espresso-Wave-AX`** | Switch-specific shader harmonization (`macro_update.ps1`, `shader_validate.ps1`), HLE applet defaults, `Lossless.dll` bridge, and `PGO_config.bat` / `PGO_stage*.bat` orchestration. |
 | **4. Cemu Wii U Adapter** | **`Cemu-Latte-AX`** | PowerPC JIT + Vulkan 1.4 PGO orchestration and translation mapping `ax_engine.ini` / `hardware_profiles.json` into Cemu `settings.xml`. |
 | **5. Standalone Audio Adapter** | **`FLAC_AX`** | `libFLAC++` decoder pipeline, `S32_LE` stereo packing, and direct ALSA `hw:CARD=FC3,DEV=0` hardware output loop. |
-| **6. Bare-Metal Linux OS** | **`Piccolo-AX`** | Buildroot `BR2_EXTERNAL` overlay (`batocera-ax-external/`), `6.12-rt` kernel config, boot isolation (`S01piccolo-isolate`, `S02piccolo-hw`, `K01piccolo-sync`), and `edenGenerator.py`. |
+• | **6. Bare-Metal Linux OS** | **Piccolo-AX** | Buildroot BR2_EXTERNAL overlay (batocera-ax-external/), 6.12-rt kernel config, boot isolation (S01piccolo-isolate, S02piccolo-hw, K01piccolo-sync), shared Qt6 runtime, and unified axGenerator.py. |
 
 ---
 
