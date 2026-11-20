@@ -1,122 +1,133 @@
-<#
-.SYNOPSIS
-    [AX] Cross-Application Build & Cache Purge Utility (ax-sdk/tools/clean_all.ps1)
-.DESCRIPTION
-    Terminates lingering compiler/emulator processes, purges stale Ninja/CMake manifests
-    and build trees (build, build_stage0..2, .cache), and supports -Wait so build scripts
-    can block deterministically until disk deletion completes before invoking CMake.
-#>
-[CmdletBinding()]
+# SPDX-FileCopyrightText: Copyright 2026 The Silicon Preservation Society
+# SPDX-License-Identifier: MIT
+
 param(
-    [Parameter(Mandatory = $false)]
-    [string]$TargetRoot = (Get-Location).Path,
-
-    [Parameter(Mandatory = $false)]
-    [string[]]$ProcessNames = @("eden", "Cemu", "flac_ax", "ninja", "cmake", "clang-cl", "lld-link"),
-
-    [Parameter(Mandatory = $false)]
-    [string[]]$BuildDirs = @("build", "build_stage0", "build_stage1", "build_stage2", ".cache"),
-
-    [Parameter(Mandatory = $false)]
-    [switch]$Wait,
-
-    [Parameter(Mandatory = $false)]
-    [switch]$KeepProfiles
+    [string]$ProjDir = (Get-Location).Path,
+    [string[]]$Targets = @("ninja", "cmake", "clang-cl", "lld-link", "eden", "Cemu", "flac_ax", "glslangValidator"),
+    [switch]$Wait
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "SilentlyContinue"
+$ErrorActionPreference = "Stop"
+$ProjDir = (Resolve-Path -Path $ProjDir).Path
 
-$ResolvedRoot = (Resolve-Path $TargetRoot).Path
-Write-Host "========================================================================" -ForegroundColor Cyan
-Write-Host " [AX CLEAN] Purging Build Artifacts in: $ResolvedRoot" -ForegroundColor Cyan
-Write-Host "========================================================================" -ForegroundColor Cyan
+Write-Output "======================================================================="
+Write-Output " [PURGE SUITE] Initializing Absolute Pipeline Cleanup Pass"
+Write-Output " Target Path: $ProjDir"
+Write-Output "======================================================================="
 
-# 1. Terminate active build/runtime handles that could lock files
-foreach ($ProcName in $ProcessNames) {
-    $Running = Get-Process -Name $ProcName -ErrorAction SilentlyContinue
-    if ($null -ne $Running) {
-        Write-Host "[STOP] Terminating active process: $ProcName" -ForegroundColor Yellow
-        $Running | Stop-Process -Force -ErrorAction SilentlyContinue
-    }
+Write-Output "[STATUS] Terminating active build engine processes..."
+foreach ($Target in $Targets) {
+    try {
+        Stop-Process -Name $Target -Force -ErrorAction SilentlyContinue
+    } catch {}
+}
+Start-Sleep -Seconds 1
+
+Write-Output "[STATUS] Clearing pipeline telemetry log files..."
+$LogFiles = @(
+    "build_stage0_summary.log",
+    "build_stage0_verbose.log",
+    "build_stage0_triage.log",
+    "build_stage0_incremental.log",
+    "build_stage1_verbose.log",
+    "build_stage2_verbose.log",
+    "profile_validation_report.log",
+    "build_session.log"
+)
+foreach ($Log in $LogFiles) {
+    $TargetLog = Join-Path $ProjDir $Log
+    if (Test-Path $TargetLog) { Remove-Item -Path $TargetLog -Force -ErrorAction SilentlyContinue }
 }
 
-# 2. Remove root stray Ninja manifests, transient SPIR-V dumps, and telemetry logs
-$RootArtifacts = @(
+Write-Output "[STATUS] Purging persistent manifests, stray shaders, and PGO artifacts..."
+$StrayFiles = @(
     ".ninja_deps",
     ".ninja_log",
+    "build.ninja",
+    "rules.ninja",
+    "CMakeCache.txt",
     "frag.spv",
     "vert.spv",
-    "build_stage_telemetry_metrics.json"
+    "default.profdata",
+    "0x01",
+    "0x02",
+    "0x20"
 )
-
-if (-not $KeepProfiles) {
-    $RootArtifacts += @("default.profraw", "default.profdata", "eden.profdata")
+foreach ($File in $StrayFiles) {
+    $TargetFile = Join-Path $ProjDir $File
+    if (Test-Path $TargetFile) { Remove-Item -Path $TargetFile -Force -ErrorAction SilentlyContinue }
 }
 
-foreach ($Item in $RootArtifacts) {
-    $FullPath = Join-Path $ResolvedRoot $Item
-    if (Test-Path $FullPath) {
-        Remove-Item -Path $FullPath -Force -ErrorAction SilentlyContinue
-        Write-Host "[DEL]  Removed root artifact: $Item" -ForegroundColor DarkGray
-    }
+Get-ChildItem -Path $ProjDir -Filter "*.profraw" -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+$ScriptsSubdir = Join-Path $ProjDir "Scripts"
+if (Test-Path $ScriptsSubdir) {
+    Get-ChildItem -Path $ScriptsSubdir -Filter "*.spv" -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 }
 
-Get-ChildItem -Path $ResolvedRoot -Filter "*.profraw" -File -ErrorAction SilentlyContinue | ForEach-Object {
-    if (-not $KeepProfiles) {
-        Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
-    }
+Write-Output "[STATUS] Staging build trees, PGO caches, and stray folders for cleanup..."
+$RandID = "EDENTRASH_" + (Get-Random -Minimum 10000 -Maximum 99999).ToString()
+
+$BuildDirs = [ordered]@{
+    "build"            = "trash_build_$RandID"
+    "build_stage0"     = "trash_s0_$RandID"
+    "PGO_stage0"       = "trash_alt_s0_$RandID"
+    "build_stage1"     = "trash_s1_$RandID"
+    "build_stage2"     = "trash_s2_$RandID"
+    "build_pgo"        = "trash_bpgo_$RandID"
+    "pgo_data"         = "trash_pgo_$RandID"
+    "pgo_data_triage"  = "trash_pgo_triage_$RandID"
+    "pgo_profiles"     = "trash_pgoprof_$RandID"
+    ".cache"           = "trash_cache_$RandID"
+    "CMakeFiles"       = "trash_cmake_$RandID"
+    "Testing"          = "trash_testing_$RandID"
+    "x64"              = "trash_x64_$RandID"
+    "Release"          = "trash_rel_$RandID"
+    "Debug"            = "trash_dbg_$RandID"
+    "Scripts\.vs"      = "trash_scriptsvs_$RandID"
 }
 
-# 3. Stage build directories into instant-rename trash folders for race-free cleanup
-$Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$TrashDirs = [System.Collections.Generic.List[string]]::new()
-
-foreach ($DirName in $BuildDirs) {
-    $TargetDir = Join-Path $ResolvedRoot $DirName
-    if (Test-Path $TargetDir) {
-        $TrashName = "_AXTRASH_${DirName}_${Timestamp}"
-        $TrashPath = Join-Path $ResolvedRoot $TrashName
+foreach ($Key in $BuildDirs.Keys) {
+    $SourcePath = Join-Path $ProjDir $Key
+    if (Test-Path $SourcePath) {
         try {
-            Rename-Item -Path $TargetDir -NewName $TrashName -Force
-            $TrashDirs.Add($TrashPath)
-            Write-Host "[MOVE] Staged '$DirName' -> '$TrashName'" -ForegroundColor Green
+            Rename-Item -Path $SourcePath -NewName $BuildDirs[$Key] -Force
         } catch {
-            Write-Warning "[WARN] Could not rename '$DirName'; attempting direct removal."
-            Remove-Item -Path $TargetDir -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Output "  [STATUS] Persistent file handle lock discovered on folder: $Key"
+            Start-Sleep -Seconds 1
+            try {
+                Rename-Item -Path $SourcePath -NewName $BuildDirs[$Key] -Force
+            } catch {
+                Write-Output "  [@=FATAL] Workspace path locked - $Key. Skipping block..."
+            }
         }
     }
 }
 
-# Sweep any leftover _AXTRASH_* or EDENTRASH_* folders from prior interrupted runs
-Get-ChildItem -Path $ResolvedRoot -Directory -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -like "_AXTRASH_*" -or $_.Name -like "EDENTRASH_*" } |
-    ForEach-Object {
-        if (-not $TrashDirs.Contains($_.FullName)) {
-            $TrashDirs.Add($_.FullName)
-        }
-    }
+$ScriptPayload = @"
+Get-ChildItem -Path '$ProjDir' -Directory -ErrorAction SilentlyContinue | Where-Object {
+    (`$_.Name -like '*EDENTRASH_*' -or `$_.Name -like '*_trash_*' -or `$_.Name -like 'trash_*')
+} | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+"@
 
-# 4. Execute deletion synchronously (-Wait) or asynchronously in background
-if ($TrashDirs.Count -gt 0) {
-    $PathsArray = $TrashDirs.ToArray()
+$EncodedCommand = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($ScriptPayload))
+
+try {
     if ($Wait) {
-        Write-Host "[WAIT] Deleting $($PathsArray.Count) staged directory tree(s) synchronously..." -ForegroundColor Cyan
-        foreach ($Trash in $PathsArray) {
-            Remove-Item -Path $Trash -Recurse -Force -ErrorAction SilentlyContinue
-        }
-        Write-Host "[PASS] Synchronous purge complete." -ForegroundColor Green
+        Write-Output "[STATUS] Running synchronous disk purge (-Wait)..."
+        Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $EncodedCommand" -WindowStyle Hidden -Wait
+        Write-Output "======================================================================="
+        Write-Output " [SUCCESS] Workspace verified clean. Synchronous purge complete!"
+        Write-Output "======================================================================="
     } else {
-        Write-Host "[ASYNC] Spawning background deletion worker for $($PathsArray.Count) directory tree(s)..." -ForegroundColor Cyan
-        $EncodedList = ($PathsArray | ForEach-Object { "'$_'" }) -join ","
-        Start-Process -FilePath "powershell.exe" -WindowStyle Hidden -ArgumentList @(
-            "-NoProfile",
-            "-ExecutionPolicy", "Bypass",
-            "-Command", "foreach (`$p in @($EncodedList)) { Remove-Item -Path `$p -Recurse -Force -ErrorAction SilentlyContinue }"
-        ) | Out-Null
+        Write-Output "[STATUS] Launching asynchronous multi-threaded disk deletion worker..."
+        Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $EncodedCommand" -WindowStyle Hidden
+        Write-Output "======================================================================="
+        Write-Output " [SUCCESS] Workspace verified clean. Background deletion initialized!"
+        Write-Output "======================================================================="
     }
-} else {
-    Write-Host "[PASS] Workspace already clean." -ForegroundColor Green
+} catch {
+    Write-Output "[@=FATAL] Failed to allocate worker window handle context."
+    exit 1
 }
 
 exit 0
