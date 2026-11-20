@@ -1,8 +1,15 @@
-## 🌐 AX Ecosystem: 4-Repository Topology & Lineage
+# 🌐 AX Ecosystem: 5-Repository Topology & Boundary Contract
 
-The **AX Project** unifies shared low-level C++20 silicon abstractions (`ax-sdk`) with platform- and emulator-specific forks across Windows 10/11 and bare-metal Linux[cite: 4, 6, 22].
+**Programme:** The Silicon Preservation Society (`[AX]`)  
+**Current SDK Baseline:** `ax-sdk` `v1.35.1c` → `v1.36.0`  
+**Last Updated:** `2026-11-20`
+
+The **AX Project** unifies shared low-level C++20 silicon abstractions (`ax-sdk`), cross-application telemetry/auditing tooling (`ax-sdk/tools/`), and declarative runtime settings (`ax_engine.ini` + `hardware_profiles.json`) across Windows 10/11 and bare-metal Linux (`Piccolo-AX`) without duplicating platform code.
 
 ```text
+                    +-------------------------------------------------------+
+
+                    |                        ax-sdk                         |
                     +-------------------------------------------------------+
                     |                        ax-sdk                         |
                     |   [https://github.com/galaxywarriordad/ax-sdk](https://github.com/galaxywarriordad/ax-sdk)          |
