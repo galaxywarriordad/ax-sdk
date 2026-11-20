@@ -15,8 +15,8 @@ The `[AX]` ecosystem transforms commodity `x86_64` desktop hardware into a deter
 | Layer | Component / Target | Repository & License | Architectural Role & Execution Specifications |
 | :--- | :--- | :--- | :--- |
 | **Layer 1: Application Cartridges** | • **Eden Espresso Wave `[AX]`** (Switch)<br>• **Cemu Latte `[AX]`** (Wii U)<br>• **`FLAC_AX`** (Hi-Res Audio) | • [Eden Forgejo](https://eden-emu.dev) / [GitHub](https://github.com) (`GPL-3.0`)<br>• [Cemu-Latte-AX](https://github.com) (`MPL-2.0`)<br>• [FLAC_AX](https://github.com) (`MIT`) | **Two-Tier Release Discipline (Emulators):**<br>• **Stage A (Control Baseline):** Unmodified upstream compiled with `Clang 23.1+` ThinLTO + 3-Phase PGO (`-march=skylake`) & Vulkan 1.4.<br>• **Stage B (`[AX]` Production):** Links `ax::core`, loads `ax_engine.ini`, and activates full silicon isolation.<br>**Audio Appliance (`FLAC_AX`):** Direct `libFLAC++` → `S32_LE` → `SCHED_FIFO 80` ALSA (`2.00 ms`) pipeline. |
-| **Layer 2: Shared Core, Settings & Tooling** | **`ax-sdk`** (`libax_core` / `ax::core`) + **`ax-sdk/tools/`** | [://github.com](https://://github.com) (`MIT`) | • **C++20 Runtime:** `topology`, `memory`, `vram`, `igpu`, `audio`, `config` (`ax_engine.ini`), and 64B-aligned atomic `telemetry`.<br>• **Declarative Truth:** `config/hardware_profiles.json` (`schema_version: 2.1`).<br>• **Aggregated Scripts (`tools/`):** Process-agnostic `check_hardware.ps1`, `set_irq_affinity.ps1`, `telemetry_daemon.ps1`, and `clean_all.ps1`. |
-| **Layer 3: Bare-Metal Console OS** | **Piccolo `[AX]`** (`BR2_EXTERNAL`) | [://github.com](https://://github.com) (`GPL-3.0`) | `< 300 MB` RAM-resident EROFS (`lz4hc,9`) appliance built on pinned `batocera.linux` + `Linux 6.12-rt` (`PREEMPT_RT`, `NO_HZ_FULL`, `cgroup v2`, ZRAM LZ4, uncomposited Xorg, A/B `.prev` rollback). |
+| **Layer 2: Shared Core, Settings & Tooling** | **`ax-sdk`** (`libax_core` / `ax::core`) + **`ax-sdk/tools/`** | [://github.com (https://github.com) (`MIT`) | • **C++20 Runtime:** `topology`, `memory`, `vram`, `igpu`, `audio`, `config` (`ax_engine.ini`), and 64B-aligned atomic `telemetry`.<br>• **Declarative Truth:** `config/hardware_profiles.json` (`schema_version: 2.1`).<br>• **Aggregated Scripts (`tools/`):** Process-agnostic `check_hardware.ps1`, `set_irq_affinity.ps1`, `telemetry_daemon.ps1`, and `clean_all.ps1`. |
+| **Layer 3: Bare-Metal Console OS** | **Piccolo `[AX]`** (`BR2_EXTERNAL`) | [://github.com](https://github.com) (`GPL-3.0`) | `< 300 MB` RAM-resident EROFS (`lz4hc,9`) appliance built on pinned `batocera.linux` + `Linux 6.12-rt` (`PREEMPT_RT`, `NO_HZ_FULL`, `cgroup v2`, ZRAM LZ4, uncomposited Xorg, A/B `.prev` rollback). |
 | **Layer 4: Stream 1 Reference Silicon** | **Intel Core i5-9600K** (`6C/6T`, Zero SMT)<br>**GTX 980 Ti** + **UHD 630** + **HiBy FC3** | Bare-Metal Reference Hardware | • **Isolated Domain (`Cores 0–4`):** Core 0 (`0x01`) Audio/Timing, Core 1 (`0x02`) Vulkan + Dirty Gather, Cores 2–4 (`0x1C`) Guest JIT.<br>• **Housekeeping Sink (`Core 5` / `0x20`):** Kernel `kworker`s, `rcu_nocbs`, SATA/NVMe IRQs, QSV/VA-API, ZSTD L18, and FLAC decoding.<br>• **GPUs & DAC:** GTX 980 Ti (`580.*` / `582.78`), UHD 630 (`iHD` / QSV `NV12`), HiBy FC3 ESS ES9281AC Pro (`hw:CARD=FC3,DEV=0`). |
 
 ---
@@ -78,3 +78,35 @@ The `[AX]` ecosystem transforms commodity `x86_64` desktop hardware into a deter
   * USB DAC: HiBy FC3 (ESS Sabre ES9281AC Pro, 24-bit / 48 kHz exclusive, isolated on its own xHCI root hub with USB Selective Suspend disabled).
 
 4. 📂 5-Repository File Tree Summary
+* **dGPU + iGPU:** NVIDIA GeForce GTX 980 Ti (`6 GB` GDDR5, Maxwell GM200, pinned to `582.78 WHQL` / `580.*` Linux legacy) paired with active on-die Intel UHD Graphics 630 (`0x8086`, `31.0.101.2135` / `iHD` VA-API).
+* **USB DAC:** HiBy FC3 (ESS Sabre ES9281AC Pro, `24-bit / 48 kHz` exclusive, isolated on its own xHCI root hub with USB Selective Suspend disabled).
+
+---
+
+## 4. 📂 5-Repository File Tree Summary
+
+```text
+[AX] Ecosystem/
+├── ax-sdk/                                 # [MIT] Shared C++20 Core, Settings & Cross-App Tools
+│   ├── config/hardware_profiles.json       # Declarative silicon profile matrix (schema_version: 2.1)
+│   ├── include/ax/                         # config.hpp, telemetry.hpp, topology.hpp, memory.hpp, vram.hpp, igpu.hpp, audio.hpp
+│   ├── src/                                # config.cpp, topology.cpp, memory.cpp
+│   ├── tools/                              # check_hardware.ps1, set_irq_affinity.ps1, telemetry_daemon.ps1, clean_all.ps1
+│   ├── ax_toolchain/                       # piccolo-clang-x86_64.cmake
+│   └── REPO_TOPOLOGY.md                    # 5-repo network & Policy-in-SDK boundary contract
+│
+├── Eden-Espresso-Wave-AX/                  # [GPL-3.0] Windows 10/11 Switch Engine Master (v1.35.1)
+│   ├── PGO_config.bat                      # Interactive configurator & 3-stage LLVM PGO orchestrator
+│   ├── Scripts/                            # macro_update.ps1, shader_validate.ps1, tail_eden_log.ps1, reset_eden_config.ps1
+│   └── src/                                # Switch engine + Vulkan 1.4 VkVramShield + FlexASIO/QSV adapters
+│
+├── Piccolo-AX/                             # [GPL-3.0] < 300 MB toram Batocera Linux Console OS
+│   └── batocera-ax-external/               # Buildroot BR2_EXTERNAL (6.12-rt kernel, package/*.mk, rootfs-overlay/)
+│
+├── Cemu-Latte-AX/                          # [MPL-2.0] Wii U Emulator Fork (Win10 PGO + Piccolo-AX)
+│   └── src/                                # Cemu 2.x + ax::core integration
+│
+└── FLAC_AX/                                # [MIT] Bare-Metal Linux ESS Sabre Audio Appliance
+    └── src/main.cpp                        # Core 5 FLAC decoder -> ax::audio::LockFreeStereoRing -> Core 0 SCHED_FIFO ALSA
+```
+
