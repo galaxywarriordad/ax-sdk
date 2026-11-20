@@ -1,149 +1,66 @@
-<#
-.SYNOPSIS
-    [AX] Cross-Application Hardware IRQ Affinity Steering (ax-sdk/tools/set_irq_affinity.ps1)
-.DESCRIPTION
-    Steers PCIe MSI interrupts via Windows PnP Affinity Policy (DevicePolicy = 4):
-      - Core 0 (0x01): USB xHCI Host Controller (Exclusive USB DAC audio isolation)
-      - Core 1 (0x02): Discrete GPU (Vulkan / DirectX submission isolation)
-      - Core 5 (0x20): NVMe & SATA AHCI Storage Controllers (Aux quarantine sink)
-    Supports -Revert to restore default Windows PnP interrupt routing cleanly.
-#>
-[CmdletBinding()]
+# SPDX-FileCopyrightText: Copyright 2026 The Silicon Preservation Society
+# SPDX-License-Identifier: MIT
+#Requires -RunAsAdministrator
+
 param(
-    [Parameter(Mandatory = $false)]
     [switch]$Revert,
-
-    [Parameter(Mandatory = $false)]
-    [switch]$IncludeIntegratedGpu,
-
-    [Parameter(Mandatory = $false)]
-    [uint64]$AudioUsbMask = 0x01,
-
-    [Parameter(Mandatory = $false)]
-    [uint64]$DiscreteGpuMask = 0x02,
-
-    [Parameter(Mandatory = $false)]
-    [uint64]$StorageAuxMask = 0x20
+    [string]$RepoRoot = (Get-Location).Path
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+. "$PSScriptRoot\Get-AxProfile.ps1"
 
-# Verify Administrator privileges
-$CurrentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-if (-not $CurrentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Error "[FAIL] set_irq_affinity.ps1 must be run as Administrator."
-    exit 1
+$Hw          = Get-AxHardwareProfile -RepoRoot $RepoRoot
+$audioMask   = [Convert]::ToUInt64($Hw.Cpu.masks.audio_irq, 16)
+$vulkanMask  = [Convert]::ToUInt64($Hw.Cpu.masks.vulkan_submit, 16)
+$storageMask = [Convert]::ToUInt64($Hw.Cpu.masks.storage_aux, 16)
+
+if ($Revert) {
+    Write-Host "[PROFILE] Reverting MSI IRQs to default Windows PnP routing..." -ForegroundColor Yellow
+} else {
+    Write-Host "[PROFILE] Steering MSI IRQs for '$($Hw.CpuKey)' [$($Hw.Cpu.topology_mode)] + '$($Hw.GpuKey)' [$($Hw.Gpu.architecture)]" -ForegroundColor Cyan
 }
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$SdkRoot = Resolve-Path (Join-Path $ScriptDir "..")
-$ProfilesJsonPath = Join-Path $SdkRoot "config\hardware_profiles.json"
-
-if (Test-Path $ProfilesJsonPath) {
-    try {
-        $Profiles = Get-Content -Raw $ProfilesJsonPath | ConvertFrom-Json
-        if ($null -ne $Profiles.default_masks) {
-            if ($Profiles.default_masks.audio)        { $AudioUsbMask    = [Convert]::ToUInt64($Profiles.default_masks.audio, 16) }
-            if ($Profiles.default_masks.vulkan)       { $DiscreteGpuMask = [Convert]::ToUInt64($Profiles.default_masks.vulkan, 16) }
-            if ($Profiles.default_masks.housekeeping) { $StorageAuxMask  = [Convert]::ToUInt64($Profiles.default_masks.housekeeping, 16) }
-        }
-    } catch {
-        Write-Warning "[WARN] Could not parse masks from $ProfilesJsonPath; using default 0x01 / 0x02 / 0x20."
-    }
-}
-
-function Convert-MaskToBytes {
-    param([uint64]$Mask)
-    return [byte[]]@(
-        [byte]($Mask -band 0xFF),
-        [byte](($Mask -shr 8) -band 0xFF),
-        [byte](($Mask -shr 16) -band 0xFF),
-        [byte](($Mask -shr 24) -band 0xFF),
-        [byte](($Mask -shr 32) -band 0xFF),
-        [byte](($Mask -shr 40) -band 0xFF),
-        [byte](($Mask -shr 48) -band 0xFF),
-        [byte](($Mask -shr 56) -band 0xFF)
-    )
-}
-
-function Set-DeviceIrqPolicy {
+function Set-DeviceIrqAffinity {
     param(
-        [string]$InstanceId,
-        [string]$FriendlyName,
+        [string]$MatchName,
         [uint64]$Mask,
+        [string]$Label,
         [bool]$Undo
     )
-
-    $RegBase = "HKLM:\SYSTEM\CurrentControlSet\Enum\$InstanceId\Device Parameters\Interrupt Management"
-    $AffinityPath = Join-Path $RegBase "Affinity Policy"
-    $MsiPath = Join-Path $RegBase "MessageSignaledInterruptProperties"
-
-    if (-not (Test-Path $RegBase)) {
+    $devices = Get-PnpDevice -Status OK | Where-Object { $_.FriendlyName -like "*$MatchName*" }
+    if (-not $devices) {
+        Write-Host "[WARN] No PnP device matched '$MatchName'" -ForegroundColor Yellow
         return
     }
-
-    if ($Undo) {
-        if (Test-Path $AffinityPath) {
-            Remove-Item -Path $AffinityPath -Recurse -Force -ErrorAction SilentlyContinue
-            Write-Host "[REVERT] Restored default PnP IRQ routing for: $FriendlyName" -ForegroundColor Yellow
+    foreach ($dev in $devices) {
+        $regPath = "HKLM:\SYSTEM\CurrentControlSet\Enum\$($dev.InstanceId)\Device Parameters\Interrupt Management\Affinity Policy"
+        if ($Undo) {
+            if (Test-Path $regPath) {
+                Remove-Item -Path $regPath -Recurse -Force -ErrorAction SilentlyContinue
+                Write-Host "[REVERT] Restored default PnP routing for '$($dev.FriendlyName)' ($Label)" -ForegroundColor Yellow
+            }
+            continue
         }
-        return
-    }
-
-    if (-not (Test-Path $AffinityPath)) {
-        New-Item -Path $AffinityPath -Force | Out-Null
-    }
-
-    # Enable MSI mode if supported by the device node
-    if (-not (Test-Path $MsiPath)) {
-        New-Item -Path $MsiPath -Force | Out-Null
-    }
-    Set-ItemProperty -Path $MsiPath -Name "MSISupported" -Type DWord -Value 1 -Force
-
-    # DevicePolicy = 4 -> IrqPolicySpecifiedProcessors
-    Set-ItemProperty -Path $AffinityPath -Name "DevicePolicy" -Type DWord -Value 4 -Force
-    Set-ItemProperty -Path $AffinityPath -Name "AssignmentSetOverride" -Type Binary -Value (Convert-MaskToBytes -Mask $Mask) -Force
-
-    $HexMask = "0x{0:X2}" -f $Mask
-    Write-Host "[PINNED] $HexMask -> $FriendlyName ($InstanceId)" -ForegroundColor Green
-}
-
-Write-Host "========================================================================" -ForegroundColor Cyan
-if ($Revert) {
-    Write-Host " [AX] REVERTING HARDWARE IRQ AFFINITY POLICIES TO WINDOWS DEFAULTS" -ForegroundColor Yellow
-} else {
-    Write-Host " [AX] APPLYING HARDWARE IRQ AFFINITY POLICIES (Audio: 0x$("{0:X2}" -f $AudioUsbMask) | GPU: 0x$("{0:X2}" -f $DiscreteGpuMask) | Aux: 0x$("{0:X2}" -f $StorageAuxMask))" -ForegroundColor Cyan
-}
-Write-Host "========================================================================" -ForegroundColor Cyan
-
-# 1. Discrete GPU (PCI Display Controllers — non-Intel by default)
-$DisplayDevs = Get-PnpDevice -Class Display -Status OK -ErrorAction SilentlyContinue
-foreach ($Dev in $DisplayDevs) {
-    if ($Dev.InstanceId -notlike "PCI\*") { continue }
-    $IsIntel = ($Dev.InstanceId -like "*VEN_8086*")
-    if ($IsIntel -and -not $IncludeIntegratedGpu) {
-        Set-DeviceIrqPolicy -InstanceId $Dev.InstanceId -FriendlyName $Dev.FriendlyName -Mask $StorageAuxMask -Undo $Revert.IsPresent
-    } else {
-        Set-DeviceIrqPolicy -InstanceId $Dev.InstanceId -FriendlyName $Dev.FriendlyName -Mask $DiscreteGpuMask -Undo $Revert.IsPresent
+        if (-not (Test-Path $regPath)) {
+            New-Item -Path $regPath -Force | Out-Null
+        }
+        New-ItemProperty -Path $regPath -Name "DevicePolicy" -Value 4 -PropertyType DWord -Force | Out-Null
+        $bytes = [BitConverter]::GetBytes($Mask)
+        New-ItemProperty -Path $regPath -Name "AssignmentSetOverride" -Value $bytes -PropertyType Binary -Force | Out-Null
+        Write-Host "[OK] Steered '$($dev.FriendlyName)' ($Label) -> Mask 0x$($Mask.ToString('X2'))" -ForegroundColor Green
     }
 }
 
-# 2. USB xHCI Host Controllers (Isolates USB DAC interrupts on Core 0)
-$UsbControllers = Get-PnpDevice -Class USB -Status OK -ErrorAction SilentlyContinue |
-                  Where-Object { $_.InstanceId -like "PCI\*" -and ($_.FriendlyName -match "xHCI|Host Controller") }
-foreach ($Dev in $UsbControllers) {
-    Set-DeviceIrqPolicy -InstanceId $Dev.InstanceId -FriendlyName $Dev.FriendlyName -Mask $AudioUsbMask -Undo $Revert.IsPresent
-}
+# 1. Intel USB 3.0/3.10 eXtensible Host Controller (USB DAC)
+Set-DeviceIrqAffinity -MatchName "eXtensible Host Controller" -Mask $audioMask   -Label "Audio/Timing" -Undo $Revert.IsPresent
 
-# 3. NVMe & SATA AHCI Storage Controllers (Quarantined on Core 5)
-$StorageControllers = Get-PnpDevice -Class SCSIAdapter,HDC -Status OK -ErrorAction SilentlyContinue |
-                      Where-Object { $_.InstanceId -like "PCI\*" }
-foreach ($Dev in $StorageControllers) {
-    Set-DeviceIrqPolicy -InstanceId $Dev.InstanceId -FriendlyName $Dev.FriendlyName -Mask $StorageAuxMask -Undo $Revert.IsPresent
-}
+# 2. Dedicated NVIDIA GPU
+Set-DeviceIrqAffinity -MatchName "NVIDIA GeForce"             -Mask $vulkanMask  -Label "Vulkan Submit ($($Hw.Gpu.architecture))" -Undo $Revert.IsPresent
 
-Write-Host "========================================================================" -ForegroundColor Cyan
-Write-Host " [NOTE] Reboot Windows for PnP Interrupt Affinity changes to take effect." -ForegroundColor White
-Write-Host "========================================================================" -ForegroundColor Cyan
-exit 0
+# 3. Standard NVM Express Controllers
+Set-DeviceIrqAffinity -MatchName "Standard NVM Express"       -Mask $storageMask -Label "Aux Quarantine (NVMe)" -Undo $Revert.IsPresent
+
+# 4. SATA AHCI Controller
+Set-DeviceIrqAffinity -MatchName "SATA AHCI"                  -Mask $storageMask -Label "Aux Quarantine (SATA HDD)" -Undo $Revert.IsPresent
+
+Write-Host "`nReboot Windows to apply PCIe/USB/SATA MSI interrupt affinity changes." -ForegroundColor Cyan
