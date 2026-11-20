@@ -1,111 +1,258 @@
-#pragma once
+#include "ax/telemetry.hpp"
+#include "ax/config.hpp"
 
-#include <array>
-#include <atomic>
-#include <cstdint>
+#include <algorithm>
+#include <cstring>
+#include <new>
+
+#if AX_PLATFORM_WINDOWS
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #include <windows.h>
+#elif AX_PLATFORM_LINUX
+    #include <fcntl.h>
+    #include <sys/mman.h>
+    #include <sys/stat.h>
+    #include <unistd.h>
+#endif
 
 namespace ax {
 
-inline constexpr std::uint32_t kTelemetryShmMagic   = 0x4158544D; // "AXTM"
-inline constexpr std::uint32_t kTelemetryShmVersion = 1;
+namespace {
 
-// -----------------------------------------------------------------------------
-// Lock-Free Microsecond Audio Callback Jitter Histogram (Core 0 RT Safe)
-// 16 buckets covering 0..4000+ us in 250 us steps + exact min/max/last
-// -----------------------------------------------------------------------------
-struct alignas(64) AudioJitterStats {
-    static constexpr std::size_t kBucketCount = 16;
-    static constexpr std::uint32_t kBucketWidthUs = 250;
+alignas(64) TelemetryCounters g_local_fallback{};
+TelemetryCounters* g_active_telemetry = &g_local_fallback;
 
-    std::atomic<std::uint32_t> min_callback_us{0xFFFFFFFFu};
-    std::atomic<std::uint32_t> max_callback_us{0};
-    std::atomic<std::uint32_t> last_callback_us{0};
-    std::atomic<std::uint32_t> ring_low_water_frames{0xFFFFFFFFu};
-    std::atomic<std::uint64_t> total_callbacks{0};
-    std::array<std::atomic<std::uint64_t>, kBucketCount> buckets{};
-};
+#if AX_PLATFORM_WINDOWS
+HANDLE g_shm_handle = nullptr;
+void*  g_shm_view   = nullptr;
+#elif AX_PLATFORM_LINUX
+int    g_shm_fd     = -1;
+void*  g_shm_view   = nullptr;
+#endif
 
-// -----------------------------------------------------------------------------
-// Cache-Line-Padded Atomic Telemetry Block (AX-1.3 / v1.36.1)
-// Prevents false sharing across Core 0 (Audio), Core 1 (Vulkan), and Core 5 (Aux)
-// -----------------------------------------------------------------------------
-struct alignas(64) TelemetryCounters {
-    // Shared Memory Header (Cache Line 0)
-    alignas(64) std::atomic<std::uint32_t> magic{kTelemetryShmMagic};
-    std::atomic<std::uint32_t> version{kTelemetryShmVersion};
-    std::atomic<std::uint32_t> host_pid{0};
-    std::atomic<std::uint32_t> reserved{0};
+void InitializeHeader(TelemetryCounters* ptr) noexcept {
+    ptr->magic.store(kTelemetryShmMagic, std::memory_order_relaxed);
+    ptr->version.store(kTelemetryShmVersion, std::memory_order_relaxed);
+#if AX_PLATFORM_WINDOWS
+    ptr->host_pid.store(static_cast<std::uint32_t>(::GetCurrentProcessId()), std::memory_order_release);
+#elif AX_PLATFORM_LINUX
+    ptr->host_pid.store(static_cast<std::uint32_t>(::getpid()), std::memory_order_release);
+#endif
+}
 
-    // Cache Line 1: Core 0 Audio & Timing Domain
-    alignas(64) std::atomic<std::uint64_t> audio_underruns{0};
-    std::atomic<std::uint64_t> audio_buffer_switches{0};
-    std::atomic<std::uint32_t> audio_high_water_mark{0};
-    std::atomic<std::uint32_t> audio_processing_time_us{0};
-    std::atomic<std::uint32_t> voices_dropped{0};
+template <typename T>
+void AtomicFetchMin(std::atomic<T>& target, T value) noexcept {
+    T prev = target.load(std::memory_order_relaxed);
+    while (value < prev && !target.compare_exchange_weak(prev, value, std::memory_order_relaxed)) {
+    }
+}
 
-    // Cache Line 2: Core 1 & Core 5 GPU / VRAM / BAR1 Domain
-    alignas(64) std::atomic<std::uint64_t> vram_used_bytes{0};
-    std::atomic<std::uint64_t> vram_reaps{0};
-    std::atomic<std::uint64_t> bar1_stalls{0};
-    std::atomic<std::uint64_t> igpu_offloads{0};
-    std::atomic<std::uint64_t> qsv_frames_decoded{0};
+template <typename T>
+void AtomicFetchMax(std::atomic<T>& target, T value) noexcept {
+    T prev = target.load(std::memory_order_relaxed);
+    while (value > prev && !target.compare_exchange_weak(prev, value, std::memory_order_relaxed)) {
+    }
+}
 
-    // Cache Line 3: Frame Pacing & Memory Footprint
-    alignas(64) std::atomic<std::uint64_t> frames_presented{0};
-    std::atomic<std::uint32_t> last_frametime_us{0};
-    std::atomic<std::uint32_t> working_set_mb{0};
-    std::atomic<std::uint32_t> commit_size_mb{0};
-    std::atomic<std::uint32_t> shader_stutters{0};
+} // namespace
 
-    // Cache Lines 4+: Audio Callback Jitter Histogram
-    AudioJitterStats audio_jitter{};
-};
+bool InitTelemetryShm() noexcept {
+    if (g_shm_view != nullptr) {
+        return true;
+    }
 
-// Plain-Old-Data (POD) snapshot for zero-lock OSD rendering and JSON serialization
-struct TelemetrySnapshot {
-    std::uint32_t host_pid{0};
+    constexpr std::size_t kMapSize = sizeof(TelemetryCounters);
 
-    std::uint64_t audio_underruns{0};
-    std::uint64_t audio_buffer_switches{0};
-    std::uint32_t audio_high_water_mark{0};
-    std::uint32_t audio_processing_time_us{0};
-    std::uint32_t voices_dropped{0};
+#if AX_PLATFORM_WINDOWS
+    const DWORD size_hi = static_cast<DWORD>((static_cast<std::uint64_t>(kMapSize) >> 32) & 0xFFFFFFFFull);
+    const DWORD size_lo = static_cast<DWORD>(kMapSize & 0xFFFFFFFFull);
 
-    std::uint32_t audio_jitter_min_us{0};
-    std::uint32_t audio_jitter_p99_us{0};
-    std::uint32_t audio_jitter_max_us{0};
-    std::uint32_t audio_ring_low_water_frames{0};
+    g_shm_handle = ::CreateFileMappingA(
+        INVALID_HANDLE_VALUE,
+        nullptr,
+        PAGE_READWRITE,
+        size_hi,
+        size_lo,
+        "Local\\AX_Telemetry"
+    );
+    if (g_shm_handle == nullptr) {
+        return false;
+    }
 
-    std::uint64_t vram_used_bytes{0};
-    std::uint64_t vram_reaps{0};
-    std::uint64_t bar1_stalls{0};
-    std::uint64_t igpu_offloads{0};
-    std::uint64_t qsv_frames_decoded{0};
+    const bool already_existed = (::GetLastError() == ERROR_ALREADY_EXISTS);
+    g_shm_view = ::MapViewOfFile(g_shm_handle, FILE_MAP_ALL_ACCESS, 0, 0, kMapSize);
+    if (g_shm_view == nullptr) {
+        ::CloseHandle(g_shm_handle);
+        g_shm_handle = nullptr;
+        return false;
+    }
 
-    std::uint64_t frames_presented{0};
-    std::uint32_t last_frametime_us{0};
-    std::uint32_t working_set_mb{0};
-    std::uint32_t commit_size_mb{0};
-    std::uint32_t shader_stutters{0};
-};
+    if (!already_existed) {
+        new (g_shm_view) TelemetryCounters{};
+    }
+    g_active_telemetry = static_cast<TelemetryCounters*>(g_shm_view);
+    InitializeHeader(g_active_telemetry);
+    return true;
 
-// Maps TelemetryCounters into cross-process shared memory (Local\AX_Telemetry or /dev/shm/ax_telemetry).
-// Safe to call at startup; falls back transparently to process-local storage if SHM is unavailable.
-bool InitTelemetryShm() noexcept;
+#elif AX_PLATFORM_LINUX
+    g_shm_fd = ::shm_open("/ax_telemetry", O_CREAT | O_RDWR, 0666);
+    if (g_shm_fd < 0) {
+        return false;
+    }
 
-// Unmaps and closes shared memory handles cleanly at shutdown.
-void ShutdownTelemetryShm() noexcept;
+    if (::ftruncate(g_shm_fd, static_cast<off_t>(kMapSize)) != 0) {
+        ::close(g_shm_fd);
+        g_shm_fd = -1;
+        return false;
+    }
 
-// Global telemetry block (backed by shared memory when InitTelemetryShm() succeeds)
-[[nodiscard]] TelemetryCounters& GetTelemetry() noexcept;
+    g_shm_view = ::mmap(nullptr, kMapSize, PROT_READ | PROT_WRITE, MAP_SHARED, g_shm_fd, 0);
+    if (g_shm_view == MAP_FAILED) {
+        g_shm_view = nullptr;
+        ::close(g_shm_fd);
+        g_shm_fd = -1;
+        return false;
+    }
 
-// RT-safe Core 0 helper: records audio callback duration (us) and current ring fill level (frames)
-void RecordAudioCallbackMetrics(std::uint32_t duration_us, std::uint32_t ring_fill_frames) noexcept;
+    auto* candidate = static_cast<TelemetryCounters*>(g_shm_view);
+    if (candidate->magic.load(std::memory_order_acquire) != kTelemetryShmMagic) {
+        new (g_shm_view) TelemetryCounters{};
+    }
+    g_active_telemetry = candidate;
+    InitializeHeader(g_active_telemetry);
+    return true;
+#else
+    return false;
+#endif
+}
 
-// Lock-free snapshot copy (computes P99 audio jitter from histogram buckets)
-[[nodiscard]] TelemetrySnapshot GetTelemetrySnapshot() noexcept;
+void ShutdownTelemetryShm() noexcept {
+    g_active_telemetry = &g_local_fallback;
 
-// Resets all counters and histogram buckets to zero (typically called at title/track launch)
-void ResetTelemetry() noexcept;
+#if AX_PLATFORM_WINDOWS
+    if (g_shm_view != nullptr) {
+        ::UnmapViewOfFile(g_shm_view);
+        g_shm_view = nullptr;
+    }
+    if (g_shm_handle != nullptr) {
+        ::CloseHandle(g_shm_handle);
+        g_shm_handle = nullptr;
+    }
+#elif AX_PLATFORM_LINUX
+    if (g_shm_view != nullptr) {
+        ::munmap(g_shm_view, sizeof(TelemetryCounters));
+        g_shm_view = nullptr;
+    }
+    if (g_shm_fd >= 0) {
+        ::close(g_shm_fd);
+        g_shm_fd = -1;
+    }
+#endif
+}
+
+TelemetryCounters& GetTelemetry() noexcept {
+    return *g_active_telemetry;
+}
+
+void RecordAudioCallbackMetrics(std::uint32_t duration_us, std::uint32_t ring_fill_frames) noexcept {
+    auto& t = GetTelemetry();
+    t.audio_processing_time_us.store(duration_us, std::memory_order_relaxed);
+    AtomicFetchMax(t.audio_high_water_mark, ring_fill_frames);
+
+    auto& j = t.audio_jitter;
+    j.last_callback_us.store(duration_us, std::memory_order_relaxed);
+    AtomicFetchMin(j.min_callback_us, duration_us);
+    AtomicFetchMax(j.max_callback_us, duration_us);
+    AtomicFetchMin(j.ring_low_water_frames, ring_fill_frames);
+    j.total_callbacks.fetch_add(1, std::memory_order_relaxed);
+
+    const std::size_t bucket_idx = std::min<std::size_t>(
+        duration_us / AudioJitterStats::kBucketWidthUs,
+        AudioJitterStats::kBucketCount - 1
+    );
+    j.buckets[bucket_idx].fetch_add(1, std::memory_order_relaxed);
+}
+
+TelemetrySnapshot GetTelemetrySnapshot() noexcept {
+    const auto& t = GetTelemetry();
+    TelemetrySnapshot snap{};
+    snap.host_pid = t.host_pid.load(std::memory_order_acquire);
+
+    snap.audio_underruns = t.audio_underruns.load(std::memory_order_acquire);
+    snap.audio_buffer_switches = t.audio_buffer_switches.load(std::memory_order_acquire);
+    snap.audio_high_water_mark = t.audio_high_water_mark.load(std::memory_order_relaxed);
+    snap.audio_processing_time_us = t.audio_processing_time_us.load(std::memory_order_relaxed);
+    snap.voices_dropped = t.voices_dropped.load(std::memory_order_acquire);
+
+    const auto& j = t.audio_jitter;
+    const std::uint32_t raw_min = j.min_callback_us.load(std::memory_order_relaxed);
+    snap.audio_jitter_min_us = (raw_min == 0xFFFFFFFFu) ? 0u : raw_min;
+    snap.audio_jitter_max_us = j.max_callback_us.load(std::memory_order_relaxed);
+
+    const std::uint32_t raw_low = j.ring_low_water_frames.load(std::memory_order_relaxed);
+    snap.audio_ring_low_water_frames = (raw_low == 0xFFFFFFFFu) ? 0u : raw_low;
+
+    const std::uint64_t total_cb = j.total_callbacks.load(std::memory_order_relaxed);
+    if (total_cb > 0) {
+        const std::uint64_t p99_target = (total_cb * 99u + 99u) / 100u;
+        std::uint64_t cumulative = 0;
+        for (std::size_t i = 0; i < AudioJitterStats::kBucketCount; ++i) {
+            cumulative += j.buckets[i].load(std::memory_order_relaxed);
+            if (cumulative >= p99_target) {
+                snap.audio_jitter_p99_us = static_cast<std::uint32_t>((i + 1) * AudioJitterStats::kBucketWidthUs);
+                break;
+            }
+        }
+    }
+
+    snap.vram_used_bytes = t.vram_used_bytes.load(std::memory_order_acquire);
+    snap.vram_reaps = t.vram_reaps.load(std::memory_order_relaxed);
+    snap.bar1_stalls = t.bar1_stalls.load(std::memory_order_relaxed);
+    snap.igpu_offloads = t.igpu_offloads.load(std::memory_order_relaxed);
+    snap.qsv_frames_decoded = t.qsv_frames_decoded.load(std::memory_order_relaxed);
+
+    snap.frames_presented = t.frames_presented.load(std::memory_order_relaxed);
+    snap.last_frametime_us = t.last_frametime_us.load(std::memory_order_relaxed);
+    snap.working_set_mb = t.working_set_mb.load(std::memory_order_relaxed);
+    snap.commit_size_mb = t.commit_size_mb.load(std::memory_order_relaxed);
+    snap.shader_stutters = t.shader_stutters.load(std::memory_order_relaxed);
+    return snap;
+}
+
+void ResetTelemetry() noexcept {
+    auto& t = GetTelemetry();
+    t.audio_underruns.store(0, std::memory_order_relaxed);
+    t.audio_buffer_switches.store(0, std::memory_order_relaxed);
+    t.audio_high_water_mark.store(0, std::memory_order_relaxed);
+    t.audio_processing_time_us.store(0, std::memory_order_relaxed);
+    t.voices_dropped.store(0, std::memory_order_relaxed);
+
+    auto& j = t.audio_jitter;
+    j.min_callback_us.store(0xFFFFFFFFu, std::memory_order_relaxed);
+    j.max_callback_us.store(0, std::memory_order_relaxed);
+    j.last_callback_us.store(0, std::memory_order_relaxed);
+    j.ring_low_water_frames.store(0xFFFFFFFFu, std::memory_order_relaxed);
+    j.total_callbacks.store(0, std::memory_order_relaxed);
+    for (auto& b : j.buckets) {
+        b.store(0, std::memory_order_relaxed);
+    }
+
+    t.vram_used_bytes.store(0, std::memory_order_relaxed);
+    t.vram_reaps.store(0, std::memory_order_relaxed);
+    t.bar1_stalls.store(0, std::memory_order_relaxed);
+    t.igpu_offloads.store(0, std::memory_order_relaxed);
+    t.qsv_frames_decoded.store(0, std::memory_order_relaxed);
+
+    t.frames_presented.store(0, std::memory_order_relaxed);
+    t.last_frametime_us.store(0, std::memory_order_relaxed);
+    t.working_set_mb.store(0, std::memory_order_relaxed);
+    t.commit_size_mb.store(0, std::memory_order_relaxed);
+    t.shader_stutters.store(0, std::memory_order_relaxed);
+}
 
 } // namespace ax
