@@ -40,3 +40,15 @@ endif()
 
 add_library(ax::core ALIAS ax_core)
 add_library(ax::sdk ALIAS ax_core)
+
+include(GNUInstallDirs)
+
+install(TARGETS ax_core
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/ax"
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
