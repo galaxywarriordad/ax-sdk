@@ -2,9 +2,19 @@ markdown
 # 🛡️ `ax-sdk` Continuous Integration & SDK Maturity Roadmap (`CI_MATURITY.md`)
 
 **Programme Banner:** [The Silicon Preservation Society](https://ko-fi.com)  
+    
 **Target Repository:** `galaxywarriordad/ax-sdk` (`ax::core`)  
-**Scope:** Levels 1–5 CI Gates (`v1.36.0` → `v1.39+`)
-
+    
+## 🧭 Scope:** Levels 1–5 CI Gates (`v1.36.0` → `v1.39+`)
+    
+This document outlines a 5-level continuous integration and SDK maturity roadmap (v1_36_1 through v1.39+) drawing inspiration from console NDKs, AAA middleware, and kernel engineering.
+• Level 1 (Hygiene & Telemetry): Multi-compiler -Werror matrix (Clang, GCC, MSVC/clang-cl), target-scoped CMake isolation, cache-line-padded shared-memory telemetry (ax::telemetry), and single-header amalgamation (ax_sdk.hpp).
+• Level 2 (Correctness): Injectable CPU/topology mocks and ThreadSanitizer (TSan) / AddressSanitizer (ASan) / UndefinedBehaviorSanitizer (UBSan) concurrency sweeps.
+• Level 3 (Determinism): Zero-heap-allocation hot-path assertions and profiler timeline hooks (Tracy/PIX).
+• Level 4 (Ecosystem): Semantic versioning guardrails and automated downstream canary builds across Eden, Cemu, and FLAC_AX.
+• Level 5 (Silicon HIL Lab): Automated bare-metal Hardware-in-the-Loop replay validation on reference hardware (i5-9600K + GTX 980 Ti) enforcing zero audio underruns and strict VRAM/image size budgets.
+• The complete markdown file including the reference GitHub Actions CI workflow blueprint is available in reference.
+    
 ---
 
 ## 🧭 Introduction: Why Console-Grade CI Matters for Hardware Preservation
