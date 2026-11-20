@@ -8,8 +8,12 @@ All scripts resolve silicon thresholds from `../config/hardware_profiles.json` (
 
 ## 📋 Available Scripts
 
-* **`check_hardware.ps1`** — Pre-flight audit verifying CPU physical/SMT topology, `SeLockMemoryPrivilege` (2 MB Large Pages), Power Plan Minimum Processor State (`100%` C-state lock), USB DAC Selective Suspend (`Disabled`), and PCIe/USB/SATA IRQ affinity masks (`0x01`, `0x02`, `0x20`).
-* **`telemetry_daemon.ps1`** — Non-invasive, out-of-process sampler that reads `SampleIntervalMs` from `ax_engine.ini` and tracks Working Set, Private Bytes, Processor Affinity, and audio underruns/xruns into a standardized JSON report.
+* **`Get-AxProfile.ps1`** — Silicon profile resolver matching host CPU regex and GPU PCI Vendor/Device IDs against `config/hardware_profiles.json`.
+* **`check_hardware.ps1`** — Pre-flight audit verifying `SeLockMemoryPrivilege`, CPU physical/SMT topology, PCIe/USB/SATA IRQ masks (`[Bus X:Y.Z]`), Power Plan Minimum Processor State (`100%`), and USB Selective Suspend (`Disabled`).
+* **`set_irq_affinity.ps1`** — Administrative PCIe/USB/SATA MSI interrupt steering (`DevicePolicy = 4`) with `-Revert` rollback support.
+* **`track_telemetry.ps1`** — Non-invasive, out-of-process sampler reading `SampleIntervalMs` from `ax_engine.ini` and writing standardized JSON telemetry.
+* **`check_regression.ps1`** — Automated performance, handle-leak, audio underrun, and GPU VRAM ceiling (`vram_ceiling_gib`) gate.
+* **`clean_all.ps1`** — Instant-rename (`EDENTRASH_*`) workspace purge supporting asynchronous background deletion or `-Wait` synchronous completion.
 
 ---
 
@@ -17,22 +21,14 @@ All scripts resolve silicon thresholds from `../config/hardware_profiles.json` (
 
 ### 1. From `Eden-Espresso-Wave-AX` (`PGO_config.bat` / `PGO_stage*.bat`)
 
-Run the pre-flight hardware audit and launch the background telemetry sampler before starting `eden.exe`:
-    
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%AX_SDK_DIR%\tools\check_hardware.ps1" -TargetApp eden -LogOutputPath "%HW_CHECK_LOG%"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%AX_SDK_DIR%\tools\clean_all.ps1" -ProjDir "%PROJ_DIR%" -Wait
 
-    start "" /B powershell -NoProfile -ExecutionPolicy Bypass -File "%AX_SDK_DIR%\tools\telemetry_daemon.ps1" -TargetProcess eden -ConfigPath "ax_engine.ini" -OutputJson "build_stage_telemetry_metrics.json"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%AX_SDK_DIR%\tools\check_hardware.ps1" -TargetApp eden -RepoRoot "%PROJ_DIR%"
+
+    start "" /B powershell -NoProfile -ExecutionPolicy Bypass -File "%AX_SDK_DIR%\tools\track_telemetry.ps1" -ProcessName eden -ConfigPath "ax_engine.ini"
 
 ### 2. From `Cemu-Latte-AX`
 
-Run the pre-flight audit and attach the telemetry daemon to `Cemu.exe`:
-    
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%AX_SDK_DIR%\tools\check_hardware.ps1" -TargetApp Cemu
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%AX_SDK_DIR%\tools\check_hardware.ps1" -TargetApp Cemu -RepoRoot "%PROJ_DIR%"
 
-    start "" /B powershell -NoProfile -ExecutionPolicy Bypass -File "%AX_SDK_DIR%\tools\telemetry_daemon.ps1" -TargetProcess Cemu -ConfigPath "ax_engine.ini" -OutputJson "cemu_telemetry.json"
-
-### 3. From `FLAC_AX` (or Linux `Piccolo-AX` Shell Wrapper)
-
-When running on Windows or cross-testing via PowerShell Core (`pwsh`):
-    
-    pwsh -NoProfile -File "$env:AX_SDK_DIR/tools/telemetry_daemon.ps1" -TargetProcess flac_ax -ConfigPath "ax_engine.ini" -OutputJson "flac_telemetry.json"
+    start "" /B powershell -NoProfile -ExecutionPolicy Bypass -File "%AX_SDK_DIR%\tools\track_telemetry.ps1" -ProcessName Cemu -ConfigPath "ax_engine.ini" -OutputJsonPath "cemu_telemetry.json"
