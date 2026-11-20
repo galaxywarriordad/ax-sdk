@@ -1,141 +1,139 @@
-<#
-.SYNOPSIS
-    [AX] Cross-Application Async Telemetry Daemon (ax-sdk/tools/telemetry_daemon.ps1)
-.DESCRIPTION
-    Out-of-process low-overhead profiler for [AX] binaries (eden, Cemu, flac_ax).
-    Reads SampleIntervalMs from ax_engine.ini when available, monitors Working Set,
-    Private Memory, ProcessorAffinity, and optional log metrics, and outputs JSON telemetry.
-#>
-[CmdletBinding()]
+# SPDX-FileCopyrightText: Copyright 2026 The Silicon Preservation Society
+# SPDX-License-Identifier: MIT
+
 param(
-    [Parameter(Mandatory = $false)]
-    [string]$TargetProcess = "eden",
-
-    [Parameter(Mandatory = $false)]
+    [string]$ProcessName = "eden",
+    [int]$SampleIntervalSeconds = 0,
     [string]$ConfigPath = "ax_engine.ini",
-
-    [Parameter(Mandatory = $false)]
-    [string]$OutputJson = "build_stage_telemetry_metrics.json",
-
-    [Parameter(Mandatory = $false)]
-    [string]$LogFilePath = "",
-
-    [Parameter(Mandatory = $false)]
-    [int]$SampleIntervalMs = 0,
-
-    [Parameter(Mandatory = $false)]
-    [int]$MaxDurationSeconds = 0
+    [string]$OutputJsonPath = "build_stage_telemetry_metrics.json",
+    [string]$LogDir = "",
+    [string]$StopFilePath = "stop_telemetry"
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "SilentlyContinue"
+$ErrorActionPreference = "Continue"
 
-# ------------------------------------------------------------------------------
-# 1. Resolve SampleIntervalMs from ax_engine.ini if not explicitly overridden
-# ------------------------------------------------------------------------------
-if ($SampleIntervalMs -le 0) {
-    $SampleIntervalMs = 250
+# Resolve default LogDir dynamically per application if not passed
+if ([string]::IsNullOrWhiteSpace($LogDir)) {
+    if ($ProcessName -ieq "eden") {
+        $LogDir = "$env:APPDATA\eden\log"
+    } elseif ($ProcessName -ieq "Cemu") {
+        $LogDir = "$env:APPDATA\Cemu"
+    }
+}
+
+# Resolve SampleIntervalSeconds from ax_engine.ini if not explicitly passed
+if ($SampleIntervalSeconds -le 0) {
+    $SampleIntervalSeconds = 2
     if (Test-Path $ConfigPath) {
         $Match = Select-String -Path $ConfigPath -Pattern "^\s*SampleIntervalMs\s*=\s*(\d+)" | Select-Object -First 1
         if ($null -ne $Match) {
-            $SampleIntervalMs = [int]$Match.Matches.Groups[1].Value
+            $ms = [int]$Match.Matches.Groups[1].Value
+            $SampleIntervalSeconds = [Math]::Max(1, [int][Math]::Round($ms / 1000.0))
         }
     }
 }
 
-Write-Host "[AX TELEMETRY] Watching process '$TargetProcess' (Interval: ${SampleIntervalMs}ms -> $OutputJson)" -ForegroundColor Cyan
+Write-Host "=======================================================================" -ForegroundColor Cyan
+Write-Host " [AX] ASYNCHRONOUS PIPELINE TELEMETRY DAEMON ACTIVE ($ProcessName)" -ForegroundColor Cyan
+Write-Host " Press Ctrl+C or create $StopFilePath to stop." -ForegroundColor Cyan
+Write-Host "=======================================================================" -ForegroundColor Cyan
 
-# Wait up to 60s for the target process to spawn
-$WaitStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-$Proc = $null
-while ($null -eq $Proc -and $WaitStopwatch.Elapsed.TotalSeconds -lt 60) {
-    $Proc = Get-Process -Name $TargetProcess -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($null -eq $Proc) {
-        Start-Sleep -Milliseconds 200
-    }
-}
+$prevCpuSeconds = $null
+$prevSampleTime = $null
+$logicalCores = [Environment]::ProcessorCount
 
-if ($null -eq $Proc) {
-    Write-Warning "[AX TELEMETRY] Timed out waiting for process '$TargetProcess' to start."
-    exit 1
-}
-
-$SessionStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-$Samples = 0
-$PeakWorkingSetMB = 0.0
-$PeakPrivateBytesMB = 0.0
-$SumWorkingSetMB = 0.0
-$AudioUnderruns = 0
-$VoicesDropped = 0
-$LastAffinityHex = "0x0"
-
-# ------------------------------------------------------------------------------
-# 2. Non-Invasive Sampling Loop
-# ------------------------------------------------------------------------------
 while ($true) {
-    $Proc.Refresh()
-    if ($Proc.HasExited) {
-        break
+    if (Test-Path $StopFilePath) {
+        Write-Host "[STOP] Stop file detected. Exiting telemetry daemon." -ForegroundColor Yellow
+        exit 0
     }
 
-    if ($MaxDurationSeconds -gt 0 -and $SessionStopwatch.Elapsed.TotalSeconds -ge $MaxDurationSeconds) {
-        break
-    }
+    try {
+        $proc = Get-Process -Name $ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($null -eq $proc) {
+            $prevCpuSeconds = $null
+            $prevSampleTime = $null
+            Write-Host "[WAITING] $ProcessName not currently running..." -ForegroundColor Yellow
+        }
+        else {
+            $now = Get-Date
+            $workingSet = [math]::Round($proc.WorkingSet64 / 1MB, 2)
+            $handles = $proc.HandleCount
 
-    $WsMB = [Math]::Round($Proc.WorkingSet64 / 1MB, 2)
-    $PrivMB = [Math]::Round($Proc.PrivateMemorySize64 / 1MB, 2)
-    $LastAffinityHex = "0x{0:X}" -f ([uint64]$Proc.ProcessorAffinity)
+            $cpuPct = 0.0
+            $curCpuSeconds = $proc.TotalProcessorTime.TotalSeconds
+            if ($null -ne $prevCpuSeconds -and $null -ne $prevSampleTime) {
+                $wallDelta = ($now - $prevSampleTime).TotalSeconds
+                if ($wallDelta -gt 0) {
+                    $cpuPct = [math]::Round((($curCpuSeconds - $prevCpuSeconds) / ($wallDelta * $logicalCores)) * 100.0, 2)
+                }
+            }
+            $prevCpuSeconds = $curCpuSeconds
+            $prevSampleTime = $now
 
-    if ($WsMB -gt $PeakWorkingSetMB) { $PeakWorkingSetMB = $WsMB }
-    if ($PrivMB -gt $PeakPrivateBytesMB) { $PeakPrivateBytesMB = $PrivMB }
-    $SumWorkingSetMB += $WsMB
-    $Samples++
+            $prioMap = @{}
+            $threadCount = 0
+            try {
+                foreach ($t in $proc.Threads) {
+                    $threadCount++
+                    try {
+                        $prio = $t.PriorityLevel.ToString()
+                        $key = "Prio_$prio"
+                        if (-not $prioMap.ContainsKey($key)) {
+                            $prioMap[$key] = 0
+                        }
+                        $prioMap[$key]++
+                    } catch {}
+                }
+            } catch {}
 
-    # Optional non-locking log tail scan for underrun / xrun counters if LogFilePath is provided
-    if (-not [string]::IsNullOrWhiteSpace($LogFilePath) -and (Test-Path $LogFilePath)) {
-        try {
-            $Fs = [System.IO.File]::Open($LogFilePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
-            $Reader = New-Object System.IO.StreamReader($Fs)
-            $TailContent = $Reader.ReadToEnd()
-            $Reader.Close()
-            $Fs.Close()
+            $shaderStutters = 0
+            $audioUnderruns = 0
+            $voicesDropped = 0
 
-            $UnderrunMatches = [regex]::Matches($TailContent, "(?i)(audio_underrun|EPIPE|xrun)")
-            $AudioUnderruns = $UnderrunMatches.Count
-        } catch {
-            # Ignore transient file locks
+            if (-not [string]::IsNullOrWhiteSpace($LogDir) -and (Test-Path $LogDir)) {
+                $candidateLogs = Get-ChildItem -Path $LogDir -Filter "*.log" -File -ErrorAction SilentlyContinue
+                $txtLogs = Get-ChildItem -Path $LogDir -Filter "*_log.txt" -File -ErrorAction SilentlyContinue
+                $allLogs = @($candidateLogs) + @($txtLogs) | Select-Object -Unique
+
+                foreach ($logFile in $allLogs) {
+                    $stutterMatches = Select-String -Path $logFile.FullName -Pattern "Shader compile|Pipeline creation took" -SimpleMatch -ErrorAction SilentlyContinue
+                    if ($stutterMatches) { $shaderStutters += $stutterMatches.Count }
+
+                    $underrunMatches = Select-String -Path $logFile.FullName -Pattern "underrun|EPIPE|buffer empty|xrun" -ErrorAction SilentlyContinue
+                    if ($underrunMatches) { $audioUnderruns += $underrunMatches.Count }
+
+                    $voiceMatches = Select-String -Path $logFile.FullName -Pattern "voice drop|dropped voice" -ErrorAction SilentlyContinue
+                    if ($voiceMatches) { $voicesDropped += $voiceMatches.Count }
+                }
+            }
+
+            $timestamp = $now.ToString("yyyy-MM-dd HH:mm:ss.fff")
+            $metricObj = [PSCustomObject]@{
+                Timestamp        = $timestamp
+                TargetProcess    = $ProcessName
+                ProcessId        = $proc.Id
+                WorkingSet_MB    = $workingSet
+                ThreadCount      = $threadCount
+                HandleCount      = $handles
+                ThreadPriorities = $prioMap
+                AudioUnderruns   = $audioUnderruns
+                VoicesDropped    = $voicesDropped
+                ShaderStutters   = $shaderStutters
+                CpuUsage_Pct     = $cpuPct
+                DiskIO_MBps      = 0
+                GpuUsage_Pct     = 0
+            }
+
+            $metricJson = $metricObj | ConvertTo-Json -Compress
+            [IO.File]::WriteAllText($OutputJsonPath, $metricJson, [Text.Encoding]::UTF8)
+
+            Write-Host "[TELEMETRY] [$timestamp] $ProcessName (PID: $($proc.Id)) | CPU: ${cpuPct}% | RAM: ${workingSet}MB | Handles: $handles | Threads: $threadCount | Underruns: $audioUnderruns" -ForegroundColor Green
         }
     }
+    catch {
+        Write-Host "[ERROR] Telemetry sampling error: $_" -ForegroundColor Red
+    }
 
-    Start-Sleep -Milliseconds $SampleIntervalMs
+    Start-Sleep -Seconds $SampleIntervalSeconds
 }
-
-$SessionStopwatch.Stop()
-$AvgWorkingSetMB = if ($Samples -gt 0) { [Math]::Round($SumWorkingSetMB / $Samples, 2) } else { 0.0 }
-
-# ------------------------------------------------------------------------------
-# 3. Emit Standardized [AX] Telemetry JSON Report
-# ------------------------------------------------------------------------------
-$Report = [ordered]@{
-    schema_version         = "1.1"
-    timestamp_utc          = (Get-Date).ToUniversalTime().ToString("o")
-    target_process         = $TargetProcess
-    sample_interval_ms     = $SampleIntervalMs
-    samples_collected      = $Samples
-    duration_seconds       = [Math]::Round($SessionStopwatch.Elapsed.TotalSeconds, 2)
-    process_affinity_mask  = $LastAffinityHex
-    avg_working_set_mb     = $AvgWorkingSetMB
-    peak_working_set_mb    = $PeakWorkingSetMB
-    peak_private_bytes_mb  = $PeakPrivateBytesMB
-    audio_underruns        = $AudioUnderruns
-    voices_dropped         = $VoicesDropped
-}
-
-$OutDir = Split-Path -Parent $OutputJson
-if (-not [string]::IsNullOrWhiteSpace($OutDir) -and -not (Test-Path $OutDir)) {
-    New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
-}
-
-$Report | ConvertTo-Json -Depth 4 | Out-File -FilePath $OutputJson -Encoding UTF8 -Force
-Write-Host "[AX TELEMETRY] Session complete ($Samples samples). Peak WS: ${PeakWorkingSetMB} MB | Underruns: $AudioUnderruns" -ForegroundColor Green
-exit 0
