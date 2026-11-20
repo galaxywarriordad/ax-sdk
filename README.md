@@ -16,34 +16,33 @@ A lightweight, dependency-free C++20 runtime library (`libax_core` / `ax::core`)
 | **Eden Espresso Wave `[AX]`** | Nintendo Switch (Windows 10/11 PGO + Linux) | [Eden Forgejo (`Eden-Espresso-Wave-AX`)](https://git.eden-emu.dev/galaxywarriordad/Eden-Espresso-Wave-AX.git) | Upstream: [Eden](https://git.eden-emu.dev/eden-emu/eden/) |
 | **Piccolo `[AX]`** | `< 300 MB` Bare-Metal Linux Console OS | [GitHub (`Piccolo-AX`)](https://github.com/galaxywarriordad/Piccolo-AX) | Base: [Batocera Linux](https://github.com/batocera-linux/batocera.linux) |
 | **Cemu Latte `[AX]`** | Nintendo Wii U (Win10/11 PGO + Batocera `[AX]`) | [GitHub (`Cemu-Latte-AX`)](https://github.com/galaxywarriordad/Cemu-Latte-AX) | Upstream: [Cemu](https://github.com/cemu-project/Cemu) |
+| **`FLAC_AX`** | Bare-Metal Linux ESS Sabre Audio Appliance | [GitHub (`Cemu-Latte-AX`)](https://github.com/galaxywarriordad/FLAC-AX) | (https://git.eden-emu.dev/galaxywarriordad/FLAC_AX) | Standalone `libFLAC++` + ALSA |
 
 ---
 
-## 🧩 Core Modules
+## 🧩 Core Modules & Aggregated Tooling
 
+* **Unified Settings & Platform Macros (`ax::config`):** Standardized platform/ISA macros (`AX_PLATFORM_WINDOWS`, `AX_PLATFORM_LINUX`, `AX_HAS_AVX2`, `AX_HAS_BMI1`) and zero-dependency `ax_engine.ini` loader (`ax::LoadEngineConfig`) shared across all `[AX]` applications.
+* **Lock-Free Atomic Telemetry (`ax::telemetry`):** 64-byte cache-line-isolated atomic counters (`audio_underruns`, `vram_reaps`, `bar1_stalls`, `igpu_offloads`, `qsv_frames_decoded`) exposed via `ax::GetTelemetrySnapshot()` for OSDs and external daemons.
 * **Deterministic Topology (`ax::topology`):** Enforces `2:3:1` Non-SMT and dynamic Intel SMT / AMD CCX physical core affinity masks alongside real-time thread priorities (`SCHED_FIFO` / MMCSS).
 * **Zero-Overhead Memory (`ax::memory`):** `1G`/`2M` HugeTLB and Windows Large-Page fastmem allocators with single-cycle `BMI1` (`_bextr_u64`) page translation.
 * **Intel iGPU Offloading (`ax::igpu`):** Offloads hardware video decoding (`QSV` / `VA-API` / `VEBOX`) and compute texture unswizzling onto Intel UHD Graphics.
-* **VRAM & BAR1 Safeguards (`ax::vram`):** Per-GPU Vulkan VRAM ceilings and reap triggers (`3.50 GiB`–`10.00 GiB` via `config/hardware_profiles.json`), bounded `128 MiB`/`256 MiB` `HOST_VISIBLE` BAR1 staging pools, and runtime `FP16 → FP32` shader promotion protecting Maxwell (`GM200`/`GM204`), Pascal (`GP102`/`GP104`), and Turing (`TU116`) cards from shared-memory thrashing.
+* **VRAM & BAR1 Safeguards (`ax::vram`):** Proactive `5.00 GiB` async pruning, per-GPU Vulkan VRAM ceilings (`3.50 GiB`–`10.00 GiB` via `config/hardware_profiles.json`), bounded `128 MiB`/`256 MiB` `HOST_VISIBLE` BAR1 staging pools, and runtime `FP16 → FP32` shader promotion.
 * **Bit-Perfect Audio Ring (`ax::audio`):** Lock-free, cache-line-aligned PCM ring buffer targeting `2.00 ms` ALSA / `2.67 ms` ASIO exclusive USB DAC playback.
+* **Aggregated Host Tooling (`tools/`):** Process-parameterized scripts (`check_hardware.ps1`, `set_irq_affinity.ps1`, `telemetry_daemon.ps1`, `clean_all.ps1`) for pre-flight audits, IRQ steering, and telemetry collection across `eden`, `Cemu`, and `flac_ax`.
 
 ---
 
-## 📚 Shared Architecture Specifications
+## 🧩 Core Modules & Aggregated Tooling
 
-### Core SDK & Ecosystem Contracts (`ax-sdk`)
-
-* [AX Ecosystem Topology & Boundary Contract](REPO_TOPOLOGY.md)
-* [CI/CD & Quality Maturity Roadmap](CI_Maturity.md)
-* [Declarative Silicon Profile Matrix (`v2.1`)](config/hardware_profiles.json)
-
-### Reference Architecture & Audit Specs (`Eden-Espresso-Wave-AX`)
-
-* [Unified Dual-Target Master Plan (`v1.3`)](https://eden-emu.dev)
-* [Unified Multi-Architecture Silicon Topology Plan](https://eden-emu.dev)
-* [Unified Subsystem Integration Plan (`v1.1`)](https://eden-emu.dev)
-* [Engineering & Industry Benchmark Assessment](https://eden-emu.dev)
-* [Comprehensive Engineering & Architectural Audit](https://eden-emu.dev)
+* **Unified Settings & Platform Macros (`ax::config`):** Standardized platform/ISA macros (`AX_PLATFORM_WINDOWS`, `AX_PLATFORM_LINUX`, `AX_HAS_AVX2`, `AX_HAS_BMI1`) and zero-dependency `ax_engine.ini` loader (`ax::LoadEngineConfig`) shared across all `[AX]` applications.
+* **Lock-Free Atomic Telemetry (`ax::telemetry`):** 64-byte cache-line-isolated atomic counters (`audio_underruns`, `vram_reaps`, `bar1_stalls`, `igpu_offloads`, `qsv_frames_decoded`) exposed via `ax::GetTelemetrySnapshot()` for OSDs and external daemons.
+* **Deterministic Topology (`ax::topology`):** Enforces `2:3:1` Non-SMT and dynamic Intel SMT / AMD CCX physical core affinity masks alongside real-time thread priorities (`SCHED_FIFO` / MMCSS).
+* **Zero-Overhead Memory (`ax::memory`):** `1G`/`2M` HugeTLB and Windows Large-Page fastmem allocators with single-cycle `BMI1` (`_bextr_u64`) page translation.
+* **Intel iGPU Offloading (`ax::igpu`):** Offloads hardware video decoding (`QSV` / `VA-API` / `VEBOX`) and compute texture unswizzling onto Intel UHD Graphics.
+* **VRAM & BAR1 Safeguards (`ax::vram`):** Proactive `5.00 GiB` async pruning, per-GPU Vulkan VRAM ceilings (`3.50 GiB`–`10.00 GiB` via `config/hardware_profiles.json`), bounded `128 MiB`/`256 MiB` `HOST_VISIBLE` BAR1 staging pools, and runtime `FP16 → FP32` shader promotion.
+* **Bit-Perfect Audio Ring (`ax::audio`):** Lock-free, cache-line-aligned PCM ring buffer targeting `2.00 ms` ALSA / `2.67 ms` ASIO exclusive USB DAC playback.
+* **Aggregated Host Tooling (`tools/`):** Process-parameterized scripts (`check_hardware.ps1`, `set_irq_affinity.ps1`, `telemetry_daemon.ps1`, `clean_all.ps1`) for pre-flight audits, IRQ steering, and telemetry collection across `eden`, `Cemu`, and `flac_ax`.
 
 ---
 
@@ -54,13 +53,13 @@ ax-sdk/
 ├── .github/workflows/      # Automated CI validation & multi-platform build checks (ci.yml)
 ├── ax_toolchain/           # Cross-platform compiler & toolchain presets
 ├── config/                 # Declarative silicon profile matrix (hardware_profiles.json)
-├── include/ax/             # Public C++20 headers (topology, memory, igpu, vram, audio)
-├── src/                    # Zero-dependency C++20 implementation
-├── REPO_TOPOLOGY.md        # 4-repository lineage & Policy-in-SDK boundary contract
+├── include/ax/             # Public C++20 headers (config, telemetry, topology, memory, igpu, vram, audio)
+├── src/                    # Zero-dependency C++20 implementation (config.cpp, topology.cpp, memory.cpp)
+├── tools/                  # Aggregated cross-app host scripts (check_hardware, set_irq_affinity, telemetry_daemon, clean_all)
+├── REPO_TOPOLOGY.md        # 5-repository lineage & Policy-in-SDK boundary contract
 ├── CI_Maturity.md          # CMM Levels 1–5 quality & Hardware-in-the-Loop roadmap
 └── CMakeLists.txt          # CMake target (libax_core / ax::core)
 ```
-
 ---
 
 ## 🚀 CMake `FetchContent` Integration (`v1_35_1c`)
