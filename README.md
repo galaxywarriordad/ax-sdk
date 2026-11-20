@@ -16,7 +16,7 @@ A lightweight, dependency-free C++20 runtime library (`libax_core` / `ax::core`)
 | **Eden Espresso Wave `[AX]`** | Nintendo Switch (Windows 10/11 PGO + Linux) | [Eden Forgejo (`Eden-Espresso-Wave-AX`)](https://git.eden-emu.dev/galaxywarriordad/Eden-Espresso-Wave-AX.git) | Upstream: [Eden](https://git.eden-emu.dev/eden-emu/eden/) |
 | **Piccolo `[AX]`** | `< 300 MB` Bare-Metal Linux Console OS | [GitHub (`Piccolo-AX`)](https://github.com/galaxywarriordad/Piccolo-AX) | Base: [Batocera Linux](https://github.com/batocera-linux/batocera.linux) |
 | **Cemu Latte `[AX]`** | Nintendo Wii U (Win10/11 PGO + Batocera `[AX]`) | [GitHub (`Cemu-Latte-AX`)](https://github.com/galaxywarriordad/Cemu-Latte-AX) | Upstream: [Cemu](https://github.com/cemu-project/Cemu) |
-| **`FLAC_AX`** | Bare-Metal Linux ESS Sabre Audio Appliance | [GitHub (`Cemu-Latte-AX`)](https://github.com/galaxywarriordad/FLAC-AX) | (https://git.eden-emu.dev/galaxywarriordad/FLAC_AX) | Standalone `libFLAC++` + ALSA |
+| **`FLAC_AX`** | Bare-Metal Linux ESS Sabre Audio Appliance | [GitHub (`FLAC_AX`)](https://github.com/galaxywarriordad/FLAC-AX) | Standalone `libFLAC++` + ALSA |
 
 ---
 
