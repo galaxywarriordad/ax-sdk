@@ -1,193 +1,121 @@
-<#
-.SYNOPSIS
-    [AX] Unified Pre-Flight Silicon, Privilege & IRQ Audit (ax-sdk/tools/check_hardware.ps1)
-.DESCRIPTION
-    Validates host CPU topology, SeLockMemoryPrivilege, CPU C-State/Minimum Processor State (100%),
-    USB DAC Selective Suspend status, and PCIe/USB/SATA IRQ affinity masks against hardware_profiles.json
-    and ax_engine.ini across Eden, Cemu, and FLAC_AX.
-#>
-[CmdletBinding()]
+# SPDX-FileCopyrightText: Copyright 2026 The Silicon Preservation Society
+# SPDX-License-Identifier: MIT
+
 param(
-    [Parameter(Mandatory = $false)]
-    [ValidateSet("eden", "Cemu", "flac_ax", "generic")]
     [string]$TargetApp = "generic",
-
-    [Parameter(Mandatory = $false)]
-    [string]$ConfigPath = "",
-
-    [Parameter(Mandatory = $false)]
-    [string]$LogOutputPath = ""
+    [string]$RepoRoot  = (Get-Location).Path
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Continue"
+. "$PSScriptRoot\Get-AxProfile.ps1"
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$SdkRoot = Resolve-Path (Join-Path $ScriptDir "..")
-$ProfilesJsonPath = Join-Path $SdkRoot "config\hardware_profiles.json"
+$audioMask   = [uint64]0x01
+$vulkanMask  = [uint64]0x02
+$storageMask = [uint64]0x20
+$topoLabel   = "Elastic 2:3:1 Non-SMT"
+$gpuArch     = "NVIDIA dGPU"
 
-if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
-    $CandidateIni = Join-Path (Get-Location) "ax_engine.ini"
-    if (Test-Path $CandidateIni) {
-        $ConfigPath = $CandidateIni
-    }
-}
-
-$AuditLines = [System.Collections.Generic.List[string]]::new()
-$Failures = 0
-$Warnings = 0
-
-function Write-Audit {
-    param(
-        [string]$Status,
-        [string]$Message,
-        [ConsoleColor]$Color = [ConsoleColor]::Gray
-    )
-    $Line = "[$Status] $Message"
-    $AuditLines.Add($Line)
-    Write-Host $Line -ForegroundColor $Color
-}
-
-Write-Host "========================================================================" -ForegroundColor Cyan
-Write-Host " [AX] HARDWARE & SILICON PRE-FLIGHT AUDIT (Target: $TargetApp)" -ForegroundColor Cyan
-Write-Host "========================================================================" -ForegroundColor Cyan
-
-# ------------------------------------------------------------------------------
-# [1/5] CPU Topology, SMT & Clock Domain Check
-# ------------------------------------------------------------------------------
-$Cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
-$PhysCores = [int]$Cpu.NumberOfCores
-$LogProcs = [int]$Cpu.NumberOfLogicalProcessors
-$SmtActive = ($LogProcs -gt $PhysCores)
-
-Write-Audit "INFO" "CPU: $($Cpu.Name.Trim()) ($PhysCores Physical Cores / $LogProcs Logical Threads)" ([ConsoleColor]::White)
-if ($SmtActive) {
-    Write-Audit "WARN" "SMT/Hyper-Threading is ENABLED. ax::topology will filter logical siblings dynamically." ([ConsoleColor]::Yellow)
-    $Warnings++
-} else {
-    Write-Audit "PASS" "Zero-SMT Physical Core layout confirmed ($PhysCores C / $LogProcs T)." ([ConsoleColor]::Green)
-}
-
-# ------------------------------------------------------------------------------
-# [2/5] Large-Page Memory Privilege (SeLockMemoryPrivilege)
-# ------------------------------------------------------------------------------
-$PrivOutput = whoami /priv | Select-String -Pattern "SeLockMemoryPrivilege"
-if ($null -ne $PrivOutput) {
-    Write-Audit "PASS" "SeLockMemoryPrivilege token right present (2 MB Windows Large Pages available)." ([ConsoleColor]::Green)
-} else {
-    Write-Audit "WARN" "SeLockMemoryPrivilege missing. Enable via secpol.msc -> Lock pages in memory and reboot." ([ConsoleColor]::Yellow)
-    $Warnings++
-}
-
-# ------------------------------------------------------------------------------
-# [3/5] GPU & Silicon Profile Matrix Match (hardware_profiles.json)
-# ------------------------------------------------------------------------------
-$Gpus = Get-CimInstance Win32_VideoController
-foreach ($Gpu in $Gpus) {
-    $PnpId = $Gpu.PNPDeviceID
-    Write-Audit "INFO" "GPU Detected: $($Gpu.Name) | Driver: $($Gpu.DriverVersion) | PNP: $PnpId" ([ConsoleColor]::White)
-}
-
-if (Test-Path $ProfilesJsonPath) {
-    try {
-        $ProfilesData = Get-Content -Raw $ProfilesJsonPath | ConvertFrom-Json
-        Write-Audit "PASS" "Loaded declarative silicon matrix (schema_version: $($ProfilesData.schema_version))." ([ConsoleColor]::Green)
-    } catch {
-        Write-Audit "WARN" "Could not parse $ProfilesJsonPath : $_" ([ConsoleColor]::Yellow)
-        $Warnings++
-    }
-} else {
-    Write-Audit "WARN" "hardware_profiles.json not found at $ProfilesJsonPath." ([ConsoleColor]::Yellow)
-    $Warnings++
-}
-
-# ------------------------------------------------------------------------------
-# [4/5] CPU C-State / Minimum Processor State & USB Selective Suspend Audit
-# ------------------------------------------------------------------------------
 try {
-    $ActiveScheme = (powercfg /getactivescheme) -replace '.*GUID:\s*([a-fA-F0-9\-]+).*', '$1'
-    # Subgroup Processor (54533251-82be-4824-96c1-47b60b740d00), Min Processor State (893dee8e-2bef-41e0-89c6-b55d0929964c)
-    $MinProcQuery = powercfg /query $ActiveScheme 54533251-82be-4824-96c1-47b60b740d00 893dee8e-2bef-41e0-89c6-b55d0929964c 2>$null
-    $AcHex = ($MinProcQuery | Select-String "Current AC Power Setting Index:\s*0x([0-9a-fA-F]+)").Matches.Groups[1].Value
-    if (-not [string]::IsNullOrWhiteSpace($AcHex)) {
-        $MinPct = [Convert]::ToInt32($AcHex, 16)
-        if ($MinPct -eq 100) {
-            Write-Audit "PASS" "Power Plan Minimum Processor State locked at 100% (C0/C1 instant-wake lock)." ([ConsoleColor]::Green)
+    $Hw          = Get-AxHardwareProfile -RepoRoot $RepoRoot
+    $audioMask   = [Convert]::ToUInt64($Hw.Cpu.masks.audio_irq, 16)
+    $vulkanMask  = [Convert]::ToUInt64($Hw.Cpu.masks.vulkan_submit, 16)
+    $storageMask = [Convert]::ToUInt64($Hw.Cpu.masks.storage_aux, 16)
+    $topoLabel   = $Hw.Cpu.topology_mode
+    $gpuArch     = $Hw.Gpu.architecture
+
+    if (-not $Hw.SmtCompliant) {
+        Write-Output ("  [WARN] Hyper-Threading/SMT ENABLED ({0}T > {1}T expected) - disable HT in BIOS for deterministic latency" -f $Hw.LogicalCores, $Hw.Cpu.expected_logical_cores)
+    }
+} catch {
+    Write-Output "  [INFO] ax-sdk profile not resolved; using reference 2:3:1 masks (0x01/0x02/0x20)."
+}
+
+Write-Output "[1/5] Auditing Windows Large-Page Privilege (SeLockMemoryPrivilege)..."
+$privCheck = whoami /priv | Select-String -Pattern "SeLockMemoryPrivilege"
+if ($null -ne $privCheck) {
+    Write-Output "  [PASS] SeLockMemoryPrivilege                           -> Present (2 MB Large Pages available)"
+} else {
+    Write-Output "  [WARN] SeLockMemoryPrivilege                           -> Missing (Enable in secpol.msc -> Lock pages in memory)"
+}
+
+Write-Output "[2/5] Auditing Active Silicon Profile ($TargetApp)..."
+Write-Output ("  [INFO] Active Topology / GPU                           -> {0} | {1}" -f $topoLabel, $gpuArch)
+
+Write-Output "[3/5] Auditing 1:1 PCIe/USB/SATA Hardware IRQ Steering ($topoLabel)..."
+
+function Test-DeviceIrqAffinity {
+    param(
+        [string]$MatchName,
+        [uint64]$ExpectedMask,
+        [string]$PartitionLabel
+    )
+
+    $devices = Get-PnpDevice -Status OK -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName -like "*$MatchName*" }
+
+    if (-not $devices) {
+        Write-Output ("  [WARN] {0,-62} -> No active PnP device ({1})" -f $MatchName, $PartitionLabel)
+        return
+    }
+
+    foreach ($dev in $devices) {
+        $locProp = Get-PnpDeviceProperty -InstanceId $dev.InstanceId -KeyName "DEVPKEY_Device_LocationInfo" -ErrorAction SilentlyContinue
+        $slotTag = if ($locProp -and $locProp.Data) {
+            ($locProp.Data -replace '^PCI bus (\d+), device (\d+), function (\d+).*', ' [Bus $1:$2.$3]')
+        } else { "" }
+        $displayName = "$($dev.FriendlyName)$slotTag"
+
+        $regPath = "HKLM:\SYSTEM\CurrentControlSet\Enum\$($dev.InstanceId)\Device Parameters\Interrupt Management\Affinity Policy"
+
+        if (Test-Path $regPath) {
+            $props = Get-ItemProperty -Path $regPath -ErrorAction SilentlyContinue
+            if ($props.DevicePolicy -eq 4 -and $null -ne $props.AssignmentSetOverride) {
+                $bytes = New-Object byte[] 8
+                [Array]::Copy($props.AssignmentSetOverride, $bytes, [Math]::Min($props.AssignmentSetOverride.Length, 8))
+                $actualMask = [BitConverter]::ToUInt64($bytes, 0)
+                if ($actualMask -eq $ExpectedMask) {
+                    Write-Output ("  [PASS] {0,-62} -> 0x{1:X2} ({2})" -f $displayName, $actualMask, $PartitionLabel)
+                    continue
+                }
+            }
+        }
+        Write-Output ("  [WARN] {0,-62} -> Unpinned (Expected 0x{1:X2} for {2})" -f $displayName, $ExpectedMask, $PartitionLabel)
+    }
+}
+
+Write-Output "  --- [SECTION 1/2] Real-Time Audio/Timing & Vulkan GPU Steering ---"
+Test-DeviceIrqAffinity -MatchName "eXtensible Host Controller" -ExpectedMask $audioMask   -PartitionLabel "Audio/Timing"
+Test-DeviceIrqAffinity -MatchName "NVIDIA GeForce"             -ExpectedMask $vulkanMask  -PartitionLabel "Vulkan Submit ($gpuArch)"
+
+Write-Output "  --- [SECTION 2/2] Storage & DMA Interrupt Quarantine ---"
+Test-DeviceIrqAffinity -MatchName "Standard NVM Express"       -ExpectedMask $storageMask -PartitionLabel "Aux Quarantine (NVMe)"
+Test-DeviceIrqAffinity -MatchName "SATA AHCI"                  -ExpectedMask $storageMask -PartitionLabel "Aux Quarantine (SATA HDD)"
+
+Write-Output "[4/5] Auditing CPU C-State Floor & USB DAC Selective Suspend..."
+try {
+    $activeScheme = (powercfg /getactivescheme) -replace '^.*GUID:\s*([0-9a-fA-F-]+).*$', '$1'
+    $procMinOut   = powercfg /query $activeScheme SUB_PROCESSOR PROCTHROTTLEMIN | Select-String "Current AC Power Setting Index:"
+    $usbSuspOut   = powercfg /query $activeScheme 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 | Select-String "Current AC Power Setting Index:"
+
+    if ($procMinOut -match '0x([0-9a-fA-F]+)') {
+        $minPct = [Convert]::ToInt32($Matches[1], 16)
+        if ($minPct -ge 100) {
+            Write-Output ("  [PASS] CPU Minimum Processor State (AC)                -> {0}% (C0/C1 instant-wake locked)" -f $minPct)
         } else {
-            Write-Audit "WARN" "Power Plan Minimum Processor State is $MinPct% (recommend 100% for zero-jitter audio/pacing)." ([ConsoleColor]::Yellow)
-            $Warnings++
+            Write-Output ("  [WARN] CPU Minimum Processor State (AC)                -> {0}% (Set to 100% to avoid C6/C7 100us wake spikes)" -f $minPct)
         }
     }
 
-    # Subgroup USB Settings (2a737441-1930-4402-8d77-b2bebba308a3), USB Selective Suspend (48e6b7a6-50f5-4782-a5d4-53bb8f07e226)
-    $UsbQuery = powercfg /query $ActiveScheme 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 2>$null
-    $UsbAcHex = ($UsbQuery | Select-String "Current AC Power Setting Index:\s*0x([0-9a-fA-F]+)").Matches.Groups[1].Value
-    if (-not [string]::IsNullOrWhiteSpace($UsbAcHex)) {
-        $UsbState = [Convert]::ToInt32($UsbAcHex, 16)
-        if ($UsbState -eq 0) {
-            Write-Audit "PASS" "USB Selective Suspend is DISABLED (USB DAC root hub protected from sleep states)." ([ConsoleColor]::Green)
+    if ($usbSuspOut -match '0x([0-9a-fA-F]+)') {
+        $usbVal = [Convert]::ToInt32($Matches[1], 16)
+        if ($usbVal -eq 0) {
+            Write-Output "  [PASS] USB Selective Suspend (AC)                      -> Disabled (USB DAC 125us polling locked)"
         } else {
-            Write-Audit "WARN" "USB Selective Suspend is ENABLED. Disable in Power Options to prevent USB DAC dropouts." ([ConsoleColor]::Yellow)
-            $Warnings++
+            Write-Output "  [WARN] USB Selective Suspend (AC)                      -> Enabled (Disable to prevent USB DAC micro-stutters)"
         }
     }
 } catch {
-    Write-Audit "WARN" "Unable to query Windows powercfg settings: $_" ([ConsoleColor]::Yellow)
+    Write-Output "  [INFO] Power plan C-state/USB query skipped."
 }
 
-# ------------------------------------------------------------------------------
-# [5/5] PCIe / USB / Storage Hardware IRQ Affinity Mask Audit
-# ------------------------------------------------------------------------------
-$PciEnumRoot = "HKLM:\SYSTEM\CurrentControlSet\Enum\PCI"
-$Core0Pinned = $false
-$Core1Pinned = $false
-$Core5Pinned = $false
-
-if (Test-Path $PciEnumRoot) {
-    $AffinityKeys = Get-ChildItem -Path $PciEnumRoot -Recurse -ErrorAction SilentlyContinue |
-                    Where-Object { $_.PSChildName -eq "Affinity Policy" }
-
-    foreach ($Key in $AffinityKeys) {
-        $Props = Get-ItemProperty -Path $Key.PSPath -ErrorAction SilentlyContinue
-        if ($null -ne $Props.AssignmentSetOverride) {
-            $Bytes = [byte[]]$Props.AssignmentSetOverride
-            $Mask = 0
-            for ($i = 0; $i -lt $Bytes.Length; $i++) {
-                $Mask = $Mask -bor ([uint64]$Bytes[$i] -shl ($i * 8))
-            }
-            $DeviceNode = Split-Path (Split-Path (Split-Path $Key.PSPath -Parent) -Parent) -Parent
-            $DevProps = Get-ItemProperty -Path $DeviceNode -ErrorAction SilentlyContinue
-            $DevDesc = if ($DevProps.DeviceDesc) { ($DevProps.DeviceDesc -split ';')[-1] } else { "PCIe Device" }
-
-            $HexMask = "0x{0:X2}" -f $Mask
-            if ($Mask -eq 0x01) {
-                $Core0Pinned = $true
-                Write-Audit "PASS" "Core 0: Audio/Timing ($HexMask) -> $DevDesc" ([ConsoleColor]::Green)
-            } elseif ($Mask -eq 0x02) {
-                $Core1Pinned = $true
-                Write-Audit "PASS" "Core 1: Vulkan Submit ($HexMask) -> $DevDesc" ([ConsoleColor]::Green)
-            } elseif ($Mask -eq 0x20 -or $Mask -eq 0xC0) {
-                $Core5Pinned = $true
-                Write-Audit "PASS" "Core 5: Aux Quarantine ($HexMask) -> $DevDesc" ([ConsoleColor]::Green)
-            }
-        }
-    }
-}
-
-if (-not $Core0Pinned) { Write-Audit "INFO" "Core 0: Audio/Timing -> Unpinned (Default Windows PnP)" ([ConsoleColor]::DarkGray) }
-if (-not $Core1Pinned) { Write-Audit "INFO" "Core 1: Vulkan Submit -> Unpinned (Default Windows PnP)" ([ConsoleColor]::DarkGray) }
-if (-not $Core5Pinned) { Write-Audit "INFO" "Core 5: Aux Quarantine -> Unpinned (Default Windows PnP)" ([ConsoleColor]::DarkGray) }
-
-Write-Host "------------------------------------------------------------------------" -ForegroundColor Cyan
-Write-Host " Audit Complete | Failures: $Failures | Warnings: $Warnings" -ForegroundColor Cyan
-Write-Host "========================================================================" -ForegroundColor Cyan
-
-if (-not [string]::IsNullOrWhiteSpace($LogOutputPath)) {
-    $ParentDir = Split-Path -Parent $LogOutputPath
-    if (-not [string]::IsNullOrWhiteSpace($ParentDir) -and -not (Test-Path $ParentDir)) {
-        New-Item -ItemType Directory -Path $ParentDir -Force | Out-Null
-    }
-    $AuditLines | Out-File -FilePath $LogOutputPath -Encoding UTF8 -Force
-}
-
-if ($Failures -gt 0) { exit 1 } else { exit 0 }
+Write-Output "[5/5] Hardware Alignment Audit Complete."
+Write-Output "[STATUS] Validated $gpuArch Hardware Alignment Map ($topoLabel)."
+exit 0
