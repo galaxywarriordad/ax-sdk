@@ -1095,8 +1095,3 @@ if exist "src\input_common\drivers\android.cpp" del /f /q "src\input_common\driv
 if exist "src\input_common\drivers\android.h" del /f /q "src\input_common\drivers\android.h"
 
 findstr /s /i /n /r /c:"\<android\>" /D:.git /D:externals CMakeLists.txt *.cmake *.cpp *.h *.hpp *.ps1 *.bat *.sh
-```[cite: 21]
-
-*(Keeping the 150 GB partition and USB installer parked until you're ready.)*
-
-Want to run the cleanup and build verification now, or check any remaining `Scripts\*.ps1` or `src\` files next?
