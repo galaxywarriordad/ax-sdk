@@ -29,7 +29,7 @@ target_include_directories(ax_core ${AX_VISIBILITY}
 if(UNIX AND NOT APPLE)
     find_package(Threads REQUIRED)
     target_compile_definitions(ax_core ${AX_VISIBILITY} AX_PLATFORM_LINUX=1)
-    target_link_libraries(ax_core ${AX_VISIBILITY} Threads::Threads${CMAKE_DL_LIBS})
+    target_link_libraries(ax_core ${AX_VISIBILITY} Threads::Threads ${CMAKE_DL_LIBS})
 elseif(WIN32)
     target_compile_definitions(ax_core ${AX_VISIBILITY} AX_PLATFORM_WINDOWS=1)
     target_compile_definitions(ax_core ${AX_PRIVATE_VISIBILITY} NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -64,25 +64,28 @@ install(EXPORT ax-sdkTargets
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ax-sdk"
 )
 
-configure_package_config_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/ax_toolchain/ax-sdkConfig.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/ax-sdkConfig.cmake"
-    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ax-sdk"
-    NO_CHECK_REQUIRED_COMPONENTS_MACRO
-)
-
-write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/ax-sdkConfigVersion.cmake"
-    VERSION "${PROJECT_VERSION}"
-    COMPATIBILITY SameMajorVersion
-)
-
-install(
-    FILES
+set(_ax_sdk_config_in "${CMAKE_CURRENT_SOURCE_DIR}/ax_toolchain/ax-sdkConfig.cmake.in")
+if(EXISTS "${_ax_sdk_config_in}")
+    configure_package_config_file(
+        "${_ax_sdk_config_in}"
         "${CMAKE_CURRENT_BINARY_DIR}/ax-sdkConfig.cmake"
+        INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ax-sdk"
+        NO_CHECK_REQUIRED_COMPONENTS_MACRO
+    )
+
+    write_basic_package_version_file(
         "${CMAKE_CURRENT_BINARY_DIR}/ax-sdkConfigVersion.cmake"
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ax-sdk"
-)
+        VERSION "${PROJECT_VERSION}"
+        COMPATIBILITY SameMajorVersion
+    )
+
+    install(
+        FILES
+            "${CMAKE_CURRENT_BINARY_DIR}/ax-sdkConfig.cmake"
+            "${CMAKE_CURRENT_BINARY_DIR}/ax-sdkConfigVersion.cmake"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ax-sdk"
+    )
+endif()
 
 if(AX_SDK_STAGE_SOURCE_TREE)
     install(
@@ -98,3 +101,10 @@ if(AX_SDK_STAGE_SOURCE_TREE)
         DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/ax-sdk/src"
     )
 endif()
+```[cite: 17]
+
+<ElicitationsGroup message="Ready for #2 of 5 — which one next?">
+  <Elicitation label="2. FLAC_AX CMake" query="Give me the cleaned, 100% ready CMakeLists.txt for FLAC_AX next."/>
+  <Elicitation label="3. Eden CMake" query="Give me the cleaned, 100% ready CMakeLists.txt for Eden-Espresso-Wave-AX next."/>
+  <Elicitation label="4. Generation-X CMake" query="Give me the cleaned, 100% ready CMakeLists.txt for Generation-X-AX next."/>
+</ElicitationsGroup>
