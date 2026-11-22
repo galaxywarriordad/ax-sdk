@@ -309,14 +309,3 @@
     }
   }
 }
-```[cite: 24, 28]
-
-### Quick Verification
-* Run `Get-AxProfile.ps1` or validate JSON syntax with `python3 -m json.tool ax-sdk/config/hardware_profiles.json` to confirm there are no trailing commas or schema errors[cite: 23, 24].
-* Check that your `FLAC_AX` CLI and `ax-launch.sh` read or override `--device` (`hw:CARD=FC3,DEV=0` or `hw:CARD=BLACKPEARL,DEV=0`) and `--volume` consistently[cite: 27].
-
-<ElicitationsGroup message="What would you like to update next?">
-  <Elicitation label="Update Get-AxProfile.ps1" query="Update Get-AxProfile.ps1 so it resolves audio_profiles alongside cpu_profiles and gpu_profiles."/>
-  <Elicitation label="Update udev & ax-launch.sh" query="Update the udev rules and ax-launch.sh to support FC3 and TRN Black Pearl cleanly."/>
-  <Elicitation label="Check another repo file" query="Let me share another config or source file from the repos to clean and optimize."/>
-</ElicitationsGroup>
