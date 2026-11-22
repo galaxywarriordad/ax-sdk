@@ -24,10 +24,18 @@ if ($SampleIntervalSeconds -le 0) {
     $SampleIntervalSeconds = 2
     if (Test-Path $ConfigPath) {
         $Match = Select-String -Path $ConfigPath -Pattern "^\s*SampleIntervalMs\s*=\s*(\d+)" | Select-Object -First 1
-        if ($null -ne $Match) {
-            $ms = [int]$Match.Matches.Groups.Value
-            $SampleIntervalSeconds = [Math]::Max(1, [int][Math]::Round($ms / 1000.0))
+if ($SampleIntervalSeconds -le 0) {
+    $SampleIntervalSeconds = 2
+    if (Test-Path $ConfigPath) {
+        $Match = Select-String -Path $ConfigPath -Pattern "^\s*SampleIntervalMs\s*=\s*(\d+)" | Select-Object -First 1
+        if ($null -ne $Match -and $Match.Matches.Count -gt 0 -and $Match.Matches[0].Groups.Count -gt 1) {
+            $parsedMs = 0
+            if ([int]::TryParse($Match.Matches[0].Groups[1].Value, [ref]$parsedMs) -and $parsedMs -gt 0) {
+                $SampleIntervalSeconds = [Math]::Max(1, [int][Math]::Round($parsedMs / 1000.0))
+            }
         }
+    }
+}
     }
 }
 
