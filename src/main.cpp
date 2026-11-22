@@ -41,15 +41,18 @@ class StereoFrameRing {
 public:
 #if defined(FLAC_AX_HAVE_AX_AUDIO_HPP)
     bool Push(const std::int32_t* interleaved_lr, std::size_t frames) noexcept {
-        return ax_ring_.PushBatch(interleaved_lr, frames);
+        if (interleaved_lr == nullptr || frames == 0) {
+            return false;
+        }
+        return ax_ring_.Push(interleaved_lr, frames) == frames;
     }
 
     std::size_t Pop(std::int32_t* out_interleaved_lr, std::size_t max_frames) noexcept {
-        return ax_ring_.PopBatch(out_interleaved_lr, max_frames);
+        return ax_ring_.Pop(out_interleaved_lr, max_frames);
     }
 
     std::size_t Size() const noexcept {
-        return ax_ring_.Size();
+        return ax_ring_.AvailableFrames();
     }
 #else
     bool Push(const std::int32_t* interleaved_lr, std::size_t frames) noexcept {
