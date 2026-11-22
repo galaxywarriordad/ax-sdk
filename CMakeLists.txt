@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 project(ax-sdk VERSION 1.36.0 LANGUAGES CXX)
 
 option(AX_SDK_ENABLE_WARNINGS "Enable strict compiler warnings for ax-sdk targets" OFF)
+option(AX_SDK_STAGE_SOURCE_TREE "Install ax-sdk source tree into <prefix>/share/ax-sdk/src" OFF)
 
 file(GLOB_RECURSE AX_SDK_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 
@@ -15,11 +16,14 @@ else()
     set(AX_PRIVATE_VISIBILITY INTERFACE)
 endif()
 
+add_library(ax::core ALIAS ax_core)
+add_library(ax::sdk ALIAS ax_core)
+
 target_compile_features(ax_core ${AX_VISIBILITY} cxx_std_20)
 
 target_include_directories(ax_core ${AX_VISIBILITY}
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+    "$<INSTALL_INTERFACE:include>"
 )
 
 if(UNIX AND NOT APPLE)
@@ -38,17 +42,57 @@ if(AX_SDK_ENABLE_WARNINGS AND AX_SDK_SOURCES)
     endif()
 endif()
 
-add_library(ax::core ALIAS ax_core)
-add_library(ax::sdk ALIAS ax_core)
-
 include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 
 install(TARGETS ax_core
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    EXPORT ax-sdkTargets
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
 
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/ax"
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
 )
+
+install(EXPORT ax-sdkTargets
+    FILE ax-sdkTargets.cmake
+    NAMESPACE ax::
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ax-sdk"
+)
+
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/ax_toolchain/ax-sdkConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/ax-sdkConfig.cmake"
+    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ax-sdk"
+    NO_CHECK_REQUIRED_COMPONENTS_MACRO
+)
+
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/ax-sdkConfigVersion.cmake"
+    VERSION "${PROJECT_VERSION}"
+    COMPATIBILITY SameMajorVersion
+)
+
+install(
+    FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/ax-sdkConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/ax-sdkConfigVersion.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ax-sdk"
+)
+
+if(AX_SDK_STAGE_SOURCE_TREE)
+    install(
+        DIRECTORY
+            "${CMAKE_CURRENT_SOURCE_DIR}/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src"
+            "${CMAKE_CURRENT_SOURCE_DIR}/config"
+        DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/ax-sdk/src"
+        OPTIONAL
+    )
+    install(
+        FILES "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+        DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/ax-sdk/src"
+    )
+endif()
