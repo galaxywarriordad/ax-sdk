@@ -17,7 +17,7 @@ A lightweight, dependency-free C++20 runtime library (`libax_core` / `ax::core`)
 | **Piccolo `[AX]`** | `< 300 MB` Bare-Metal Linux Console OS | [GitHub (`Piccolo-AX`)](https://github.com/galaxywarriordad/Piccolo-AX) | Base: [Batocera Linux](https://github.com/batocera-linux/batocera.linux) |
 | **Cemu Latte `[AX]`** | Nintendo Wii U (Win10/11 PGO + Batocera `[AX]`) | [GitHub (`Cemu-Latte-AX`)](https://github.com/galaxywarriordad/Cemu-Latte-AX) | Upstream: [Cemu](https://github.com/cemu-project/Cemu) |
 | **`FLAC_AX`** | Bare-Metal Linux ESS Sabre Audio Appliance | [GitHub (`FLAC_AX`)](https://github.com/galaxywarriordad/FLAC-AX) | Standalone `libFLAC++` + ALSA |
-
+| **Amiberry `[AX]`** | Commodore Amiga 500 / 1200 / CD32 | [GitHub (`Amiberry-AX`)](https://github.com) | Upstream: [Amiberry](https://github.com) |
 ---
 
 ## 🧩 Core Modules & Aggregated Tooling
@@ -29,20 +29,7 @@ A lightweight, dependency-free C++20 runtime library (`libax_core` / `ax::core`)
 * **Intel iGPU Offloading (`ax::igpu`):** Offloads hardware video decoding (`QSV` / `VA-API` / `VEBOX`) and compute texture unswizzling onto Intel UHD Graphics.
 * **VRAM & BAR1 Safeguards (`ax::vram`):** Proactive `5.00 GiB` async pruning, per-GPU Vulkan VRAM ceilings (`3.50 GiB`–`10.00 GiB` via `config/hardware_profiles.json`), bounded `128 MiB`/`256 MiB` `HOST_VISIBLE` BAR1 staging pools, and runtime `FP16 → FP32` shader promotion.
 * **Bit-Perfect Audio Ring (`ax::audio`):** Lock-free, cache-line-aligned PCM ring buffer targeting `2.00 ms` ALSA / `2.67 ms` ASIO exclusive USB DAC playback.
-* **Aggregated Host Tooling (`tools/`):** Process-parameterized scripts (`check_hardware.ps1`, `set_irq_affinity.ps1`, `telemetry_daemon.ps1`, `clean_all.ps1`) for pre-flight audits, IRQ steering, and telemetry collection across `eden`, `Cemu`, and `flac_ax`.
-
----
-
-## 🧩 Core Modules & Aggregated Tooling
-
-* **Unified Settings & Platform Macros (`ax::config`):** Standardized platform/ISA macros (`AX_PLATFORM_WINDOWS`, `AX_PLATFORM_LINUX`, `AX_HAS_AVX2`, `AX_HAS_BMI1`) and zero-dependency `ax_engine.ini` loader (`ax::LoadEngineConfig`) shared across all `[AX]` applications.
-* **Lock-Free Atomic Telemetry (`ax::telemetry`):** 64-byte cache-line-isolated atomic counters (`audio_underruns`, `vram_reaps`, `bar1_stalls`, `igpu_offloads`, `qsv_frames_decoded`) exposed via `ax::GetTelemetrySnapshot()` for OSDs and external daemons.
-* **Deterministic Topology (`ax::topology`):** Enforces `2:3:1` Non-SMT and dynamic Intel SMT / AMD CCX physical core affinity masks alongside real-time thread priorities (`SCHED_FIFO` / MMCSS).
-* **Zero-Overhead Memory (`ax::memory`):** `1G`/`2M` HugeTLB and Windows Large-Page fastmem allocators with single-cycle `BMI1` (`_bextr_u64`) page translation.
-* **Intel iGPU Offloading (`ax::igpu`):** Offloads hardware video decoding (`QSV` / `VA-API` / `VEBOX`) and compute texture unswizzling onto Intel UHD Graphics.
-* **VRAM & BAR1 Safeguards (`ax::vram`):** Proactive `5.00 GiB` async pruning, per-GPU Vulkan VRAM ceilings (`3.50 GiB`–`10.00 GiB` via `config/hardware_profiles.json`), bounded `128 MiB`/`256 MiB` `HOST_VISIBLE` BAR1 staging pools, and runtime `FP16 → FP32` shader promotion.
-* **Bit-Perfect Audio Ring (`ax::audio`):** Lock-free, cache-line-aligned PCM ring buffer targeting `2.00 ms` ALSA / `2.67 ms` ASIO exclusive USB DAC playback.
-* **Aggregated Host Tooling (`tools/`):** Process-parameterized scripts (`check_hardware.ps1`, `set_irq_affinity.ps1`, `telemetry_daemon.ps1`, `clean_all.ps1`) for pre-flight audits, IRQ steering, and telemetry collection across `eden`, `Cemu`, and `flac_ax`.
+* **Aggregated Host Tooling (`tools/`):** Process-parameterized scripts (`check_hardware.ps1`, `set_irq_affinity.ps1`, `telemetry_daemon.ps1`, `clean_all.ps1`) for pre-flight audits, IRQ steering, and telemetry collection across `eden`, `Cemu`, and `flac_ax`.    
 
 ---
 
@@ -62,14 +49,14 @@ ax-sdk/
 ```
 ---
 
-## 🚀 CMake `FetchContent` Integration (`v1_35_1c`)
+## 🚀 CMake `FetchContent` Integration (`v1_35_2`)
 
 ```cmake
 include(FetchContent)
 FetchContent_Declare(
     ax_sdk
     GIT_REPOSITORY https://github.com/galaxywarriordad/ax-sdk.git
-    GIT_TAG        v1_35_1c
+    GIT_TAG        v1_35_2
     GIT_SHALLOW    FALSE
 )
 FetchContent_MakeAvailable(ax_sdk)
