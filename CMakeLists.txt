@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
-project(ax-sdk VERSION 1.36.1 LANGUAGES CXX)
+project(ax-sdk VERSION 1.36.2 LANGUAGES CXX)
 
 option(AX_SDK_ENABLE_WARNINGS "Enable strict compiler warnings for ax-sdk targets" OFF)
 option(AX_SDK_STAGE_SOURCE_TREE "Install ax-sdk source tree into <prefix>/share/ax-sdk/src" OFF)
 
 file(GLOB_RECURSE AX_SDK_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+list(FILTER AX_SDK_SOURCES EXCLUDE REGEX ".*/main\\.cpp$")
 
 if(AX_SDK_SOURCES)
     add_library(ax_core STATIC ${AX_SDK_SOURCES})
@@ -29,7 +30,7 @@ target_include_directories(ax_core ${AX_VISIBILITY}
 if(UNIX AND NOT APPLE)
     find_package(Threads REQUIRED)
     target_compile_definitions(ax_core ${AX_VISIBILITY} AX_PLATFORM_LINUX=1)
-    target_link_libraries(ax_core ${AX_VISIBILITY} Threads::Threads ${CMAKE_DL_LIBS})
+    target_link_libraries(ax_core ${AX_VISIBILITY} Threads::Threads ${CMAKE_DL_LIBS} rt)
 elseif(WIN32)
     target_compile_definitions(ax_core ${AX_VISIBILITY} AX_PLATFORM_WINDOWS=1)
     target_compile_definitions(ax_core ${AX_PRIVATE_VISIBILITY} NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -101,10 +102,3 @@ if(AX_SDK_STAGE_SOURCE_TREE)
         DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/ax-sdk/src"
     )
 endif()
-```[cite: 17]
-
-<ElicitationsGroup message="Ready for #2 of 5 — which one next?">
-  <Elicitation label="2. FLAC_AX CMake" query="Give me the cleaned, 100% ready CMakeLists.txt for FLAC_AX next."/>
-  <Elicitation label="3. Eden CMake" query="Give me the cleaned, 100% ready CMakeLists.txt for Eden-Espresso-Wave-AX next."/>
-  <Elicitation label="4. Generation-X CMake" query="Give me the cleaned, 100% ready CMakeLists.txt for Generation-X-AX next."/>
-</ElicitationsGroup>
