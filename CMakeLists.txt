@@ -28,8 +28,10 @@ target_include_directories(ax_core ${AX_VISIBILITY}
 
 if(UNIX AND NOT APPLE)
     find_package(Threads REQUIRED)
+    target_compile_definitions(ax_core ${AX_VISIBILITY} AX_PLATFORM_LINUX=1)
     target_link_libraries(ax_core ${AX_VISIBILITY} Threads::Threads ${CMAKE_DL_LIBS})
 elseif(WIN32)
+    target_compile_definitions(ax_core ${AX_VISIBILITY} AX_PLATFORM_WINDOWS=1)
     target_compile_definitions(ax_core ${AX_PRIVATE_VISIBILITY} NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(ax_core ${AX_VISIBILITY} winmm avrt psapi)
 endif()
