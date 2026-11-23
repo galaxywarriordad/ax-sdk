@@ -1,0 +1,64 @@
+name: Build Release Artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "CMake build configuration"
+        type: choice
+        options:
+          - Release
+          - RelWithDebInfo
+        default: Release
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ax-sdk
+        uses: actions/checkout@v5
+
+      - name: Configure, Build & Stage SDK (Linux)
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ inputs.build_type }} \
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/dist/ax-sdk-linux-x86_64" \
+            -DAX_SDK_ENABLE_WARNINGS=ON \
+            -DAX_SDK_STAGE_SOURCE_TREE=ON
+          cmake --build build --parallel
+          cmake --install build
+          cp -f config/hardware_profiles.json "${{ github.workspace }}/dist/ax-sdk-linux-x86_64/"
+
+      - name: Upload Linux SDK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ax-sdk-linux-x86_64
+          path: dist/ax-sdk-linux-x86_64
+          retention-days: 14
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout ax-sdk
+        uses: actions/checkout@v5
+
+      - name: Configure, Build & Stage SDK (Windows clang-cl)
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G Ninja `
+            -DCMAKE_C_COMPILER=clang-cl `
+            -DCMAKE_CXX_COMPILER=clang-cl `
+            -DCMAKE_BUILD_TYPE=${{ inputs.build_type }} `
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/dist/ax-sdk-windows-x86_64" `
+            -DAX_SDK_ENABLE_WARNINGS=ON `
+            -DAX_SDK_STAGE_SOURCE_TREE=ON
+          cmake --build build --parallel
+          cmake --install build
+          Copy-Item -Force config/hardware_profiles.json "${{ github.workspace }}/dist/ax-sdk-windows-x86_64/"
+
+      - name: Upload Windows SDK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ax-sdk-windows-x86_64
+          path: dist/ax-sdk-windows-x86_64
+          retention-days: 14
