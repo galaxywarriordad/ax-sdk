@@ -1,311 +1,50 @@
 {
-  "_comment_schema": "Eden Espresso Wave [AX] & Piccolo [AX] — Bulletproof Silicon Profile Matrix (Single Source of Truth)",
   "schema_version": "2.1",
-  "enforced_policies": {
-    "hyperthreading_smt": "DISABLED_IN_BIOS",
-    "igpu_astc_offload_policy": "ENABLE_IF_UHD630_OR_HD530_PRESENT"
-  },
-  "backlog": [
-    {
-      "id": "ryzen_3000_5000_ccx",
-      "target_version": "v1.37.0",
-      "description": "AMD Ryzen 5 3600 (Dual-CCX L3 isolation, SMT Off) & Ryzen 5 5600/5600X (Unified 32 MB L3 CCX, SMT Off) with Status::FallbackSingleGpu ASTC routing"
-    }
-  ],
-
-  "common_qt_config": {
-    "_comment_common": "Baseline settings enforced across all preserved Intel + NVIDIA rigs; set rig-specific audio_device in local consumer overrides",
-    "Renderer|backend": "1",
-    "Renderer|vulkan_device": "0",
-    "Renderer|use_vsync": "0",
-    "Renderer|gpu_accuracy": "0",
-    "Renderer|vram_usage_mode": "1",
-    "Renderer|use_asynchronous_shaders": "true",
-    "LibraryApplet|player_select_applet_mode": "0",
-    "LibraryApplet|mii_edit_applet_mode": "0",
-    "Audio|output_engine": "2",
-    "Audio|output_device": "auto",
-    "Debugging|perform_vulkan_check": "false",
-    "Miscellaneous|log_filter": "\"*:Debug\"",
-    "Miscellaneous|flush_line": "true"
-  },
-
-  "cpu_profiles": {
-    "coffee_lake_9600k": {
-      "_comment": "Primary reference rig: 6C/6T i5-9600K (Native Non-SMT, x49/x48/x46/x43) + 24-EU UHD 630 iGPU",
-      "match_regex": "i5-9600K",
-      "expected_physical_cores": 6,
-      "expected_logical_cores": 6,
-      "smt_policy": "Disabled (Native Non-SMT)",
-      "topology_mode": "2:3:1 (Physical 6C/6T)",
-      "core_ratios": "x49 / x48 / x46 (All-Core) / x43 Uncore",
-      "masks": {
-        "audio_irq": "0x01",
-        "vulkan_submit": "0x02",
-        "jit_workers": "0x1C",
-        "storage_aux": "0x20",
-        "full_mask": "0x3F"
-      },
-      "igpu_astc_offload": true
-    },
-    "coffee_lake_8600k": {
-      "_comment": "Secondary validation rig: 6C/6T i5-8600K (Native Non-SMT, Z390 x45 All-Core / x43 Uncore) + UHD 630",
-      "match_regex": "i5-8600K",
-      "expected_physical_cores": 6,
-      "expected_logical_cores": 6,
-      "smt_policy": "Disabled (Native Non-SMT)",
-      "topology_mode": "2:3:1 (Physical 6C/6T)",
-      "core_ratios": "x45 All-Core / x43 Uncore",
-      "masks": {
-        "audio_irq": "0x01",
-        "vulkan_submit": "0x02",
-        "jit_workers": "0x1C",
-        "storage_aux": "0x20",
-        "full_mask": "0x3F"
-      },
-      "igpu_astc_offload": true
-    },
-    "coffee_lake_9700k_8c": {
-      "_comment": "8C/8T soldered Coffee Lake: i7-9700K (Native Non-SMT) + UHD 630",
-      "match_regex": "i7-9700K",
-      "expected_physical_cores": 8,
-      "expected_logical_cores": 8,
-      "smt_policy": "Disabled (Native Non-SMT)",
-      "topology_mode": "2:4:2 (Physical 8C/8T)",
-      "core_ratios": "Stock / x48-x49 All-Core / x43 Uncore",
-      "masks": {
-        "audio_irq": "0x01",
-        "vulkan_submit": "0x02",
-        "jit_workers": "0x3C",
-        "storage_aux": "0xC0",
-        "full_mask": "0xFF"
-      },
-      "igpu_astc_offload": true
-    },
-    "intel_6c_ht_disabled": {
-      "_comment": "6-core Coffee Lake / Comet Lake with HT disabled in BIOS: i7-8700K, i5-10600K, i5-10400 -> unified 6C/6T 2:3:1",
-      "match_regex": "i7-8700K|i5-10600K|i5-10400",
-      "expected_physical_cores": 6,
-      "expected_logical_cores": 6,
-      "smt_policy": "Disabled in BIOS (Physical 6C/6T)",
-      "topology_mode": "2:3:1 (Physical 6C/6T)",
-      "core_ratios": "Stock / x47-x48 All-Core / x43 Uncore",
-      "masks": {
-        "audio_irq": "0x01",
-        "vulkan_submit": "0x02",
-        "jit_workers": "0x1C",
-        "storage_aux": "0x20",
-        "full_mask": "0x3F"
-      },
-      "igpu_astc_offload": true
-    },
-    "skylake_kaby_lake_4c": {
-      "_comment": "6th/7th-Gen 4-core Skylake & Kaby Lake with HT disabled in BIOS: i7-7700K & i7-6700K -> 4C/4T 1:2:1",
-      "match_regex": "i7-7700K|i7-6700K",
-      "expected_physical_cores": 4,
-      "expected_logical_cores": 4,
-      "smt_policy": "Disabled in BIOS (Physical 4C/4T)",
-      "topology_mode": "1:2:1 (Physical 4C/4T)",
-      "core_ratios": "Stock / x46-x48 All-Core",
-      "masks": {
-        "audio_irq": "0x01",
-        "vulkan_submit": "0x02",
-        "jit_workers": "0x0C",
-        "storage_aux": "0x08",
-        "full_mask": "0x0F"
-      },
-      "igpu_astc_offload": true
-    }
-  },
-
-  "gpu_profiles": {
-    "maxwell_gtx980ti": {
-      "_comment": "Reference 6 GB Maxwell GM200 (2816 CUDA cores, 384-bit GDDR5, FP16->FP32 emulated)",
-      "match_regex": "GTX 980 Ti|GM200",
-      "pci_vendor_id": "10DE",
-      "pci_device_ids": ["17C8"],
-      "architecture": "Maxwell (GM200)",
-      "vram_total_gib": 6.0,
+  "sdk_version": "v1_36_2",
+  "profiles": {
+    "x86_64_coffeelake_maxwell_231": {
+      "arch": "x86_64",
+      "topology": "2:3:1",
+      "audio_core": 0,
+      "vulkan_core": 1,
+      "jit_cores": [2, 3, 4],
+      "housekeeping_core": 5,
       "vram_ceiling_gib": 5.50,
-      "vram_reap_trigger_gib": 5.00,
-      "bar1_staging_mib": 128,
-      "qt_config": {
-        "Renderer|dyna_state": "0",
-        "Renderer|vertex_input_dynamic_state": "false",
-        "Renderer|allow_fp16": "false",
-        "Renderer|fast_math_fp16": "false"
-      }
+      "bar1_staging_mib": 192,
+      "igpu_offload": "qsv_vaapi"
     },
-    "maxwell_gtx980": {
-      "_comment": "4 GB Maxwell GM204 (2048 CUDA cores, 256-bit GDDR5, strict 3.50 GiB VRAM guardrail)",
-      "match_regex": "GTX 980(?! Ti)|GM204",
-      "pci_vendor_id": "10DE",
-      "pci_device_ids": ["13C0"],
-      "architecture": "Maxwell (GM204)",
-      "vram_total_gib": 4.0,
+    "x86_64_quadcore_safe_121": {
+      "arch": "x86_64",
+      "topology": "1:2:1",
+      "audio_core": 0,
+      "vulkan_core": 1,
+      "jit_cores": [2],
+      "housekeeping_core": 3,
       "vram_ceiling_gib": 3.50,
-      "vram_reap_trigger_gib": 3.15,
       "bar1_staging_mib": 128,
-      "qt_config": {
-        "Renderer|dyna_state": "0",
-        "Renderer|vertex_input_dynamic_state": "false",
-        "Renderer|allow_fp16": "false",
-        "Renderer|fast_math_fp16": "false"
-      }
+      "igpu_offload": "vaapi_conservative"
     },
-    "pascal_gtx1080ti": {
-      "_comment": "11 GB Pascal GP102 (3584 CUDA cores, 352-bit GDDR5X, high-headroom VRAM & 256 MiB BAR1)",
-      "match_regex": "GTX 1080 Ti|GP102",
-      "pci_vendor_id": "10DE",
-      "pci_device_ids": ["1B06"],
-      "architecture": "Pascal (GP102)",
-      "vram_total_gib": 11.0,
-      "vram_ceiling_gib": 10.00,
-      "vram_reap_trigger_gib": 9.20,
-      "bar1_staging_mib": 256,
-      "qt_config": {
-        "Renderer|dyna_state": "1",
-        "Renderer|vertex_input_dynamic_state": "false",
-        "Renderer|allow_fp16": "false",
-        "Renderer|fast_math_fp16": "false"
-      }
-    },
-    "pascal_gtx1080": {
-      "_comment": "8 GB Pascal GP104 (2560 CUDA cores, 256-bit GDDR5X, 7.25 GiB VRAM ceiling & 256 MiB BAR1)",
-      "match_regex": "GTX 1080(?! Ti)|GP104",
-      "pci_vendor_id": "10DE",
-      "pci_device_ids": ["1B80"],
-      "architecture": "Pascal (GP104)",
-      "vram_total_gib": 8.0,
-      "vram_ceiling_gib": 7.25,
-      "vram_reap_trigger_gib": 6.60,
-      "bar1_staging_mib": 256,
-      "qt_config": {
-        "Renderer|dyna_state": "1",
-        "Renderer|vertex_input_dynamic_state": "false",
-        "Renderer|allow_fp16": "false",
-        "Renderer|fast_math_fp16": "false"
-      }
-    },
-    "turing_gtx1660super": {
-      "_comment": "6 GB Turing TU116 (1408 CUDA cores, 192-bit GDDR6, native FP16 enabled, 5.50 GiB VRAM ceiling)",
-      "match_regex": "GTX 1660 SUPER|GTX 1660 Super|TU116",
-      "pci_vendor_id": "10DE",
-      "pci_device_ids": ["21C4"],
-      "architecture": "Turing (TU116)",
-      "vram_total_gib": 6.0,
+    "x86_64_zen_ccx_conservative": {
+      "arch": "x86_64",
+      "topology": "ccx_pinned",
+      "audio_core": 0,
+      "vulkan_core": 1,
+      "jit_cores": [2, 3, 4, 5],
+      "housekeeping_core": 6,
       "vram_ceiling_gib": 5.50,
-      "vram_reap_trigger_gib": 5.00,
-      "bar1_staging_mib": 128,
-      "qt_config": {
-        "Renderer|dyna_state": "1",
-        "Renderer|vertex_input_dynamic_state": "true",
-        "Renderer|allow_fp16": "true",
-        "Renderer|fast_math_fp16": "true"
-      }
-    }
-  },
-
-  "audio_profiles": {
-    "hiby_fc3_es9281ac_pro": {
-      "_comment": "Primary [AX] reference DAC: HiBy FC3 (ES9281AC Pro, VID 0x32BB) on Core 0 SCHED_FIFO 80",
-      "match_regex": "FC3|ES9281AC|32bb",
-      "usb_vid_pid": "32bb:*",
-      "chipset": "ESS Sabre ES9281AC Pro",
-      "alsa_device": "hw:CARD=FC3,DEV=0",
-      "alsa_card": "FC3",
-      "windows_asio_device": "Speakers (HiBy FC3)",
-      "max_pcm_hz": 384000,
-      "dsd_dop_support": ["DSD64", "DSD128"],
-      "vrms_se": 2.0,
-      "target_period_frames": 96,
-      "fallback_period_frames": 128,
-      "default_volume_speakers": 0.80,
-      "default_volume_grado_sr325x": 0.55,
-      "default_volume_hd560s": 0.70,
-      "default_volume_iems": 0.22,
-      "hardware_peq": false
+      "bar1_staging_mib": 192,
+      "igpu_offload": "none"
     },
-    "trn_black_pearl_cs43131": {
-      "_comment": "Dual-mono CS43131 DAC with flash hardware PEQ & 4.4mm balanced output",
-      "match_regex": "BLACKPEARL|Black Pearl|CS43131",
-      "usb_vid_pid": "1a86:*|3302:*",
-      "chipset": "Dual Cirrus Logic CS43131 + CB5100",
-      "alsa_device": "hw:CARD=BLACKPEARL,DEV=0",
-      "alsa_card": "BLACKPEARL",
-      "windows_asio_device": "Speakers (TRN Black Pearl)",
-      "max_pcm_hz": 384000,
-      "dsd_dop_support": ["DSD64", "DSD128", "DSD256"],
-      "vrms_se": 2.0,
-      "vrms_balanced": 4.0,
-      "target_period_frames": 96,
-      "fallback_period_frames": 128,
-      "default_volume_speakers": 0.80,
-      "default_volume_iems": 0.22,
-      "hardware_peq": true
-    },
-    "fiio_ka11_cs43131": {
-      "_comment": "High-output 2.5 Vrms 3.5mm SE DAC; cap volume at 0.70-0.75 into TPA3116 amps",
-      "match_regex": "KA11|FiiO KA11|SGM8262",
-      "chipset": "CS43131 + SGM8262",
-      "alsa_device": "hw:CARD=KA11,DEV=0",
-      "alsa_card": "KA11",
-      "max_pcm_hz": 384000,
-      "dsd_dop_support": ["DSD64", "DSD128", "DSD256"],
-      "vrms_se": 2.5,
-      "target_period_frames": 96,
-      "fallback_period_frames": 128,
-      "default_volume_speakers": 0.72,
-      "default_volume_iems": 0.20,
-      "hardware_peq": false
-    },
-    "moondrop_dawn_pro_2": {
-      "_comment": "Dual CS43198 DAC with hardware PEQ and 100-step volume for sensitive IEMs",
-      "match_regex": "Dawn Pro 2|CS43198",
-      "chipset": "Dual Cirrus Logic CS43198",
-      "alsa_device": "hw:CARD=DawnPro2,DEV=0",
-      "alsa_card": "DawnPro2",
-      "max_pcm_hz": 384000,
-      "dsd_dop_support": ["DSD64", "DSD128", "DSD256"],
-      "vrms_se": 2.0,
-      "vrms_balanced": 4.0,
-      "target_period_frames": 96,
-      "fallback_period_frames": 128,
-      "default_volume_speakers": 0.80,
-      "default_volume_iems": 0.25,
-      "hardware_peq": true
-    },
-    "neat_bumblebee": {
-      "_comment": "2-in-1 condenser mic + 24/96 UAC 1.0 codec; keep mic gain at 0% on speakers",
-      "match_regex": "BUMBLEBEE|Neat Bumblebee|0c76:1617",
-      "usb_vid_pid": "0c76:1617",
-      "chipset": "3S SSS1629",
-      "alsa_device": "hw:CARD=BUMBLEBEE,DEV=0",
-      "alsa_card": "BUMBLEBEE",
-      "max_pcm_hz": 96000,
-      "dsd_dop_support": [],
-      "vrms_se": 1.26,
-      "target_period_frames": 128,
-      "fallback_period_frames": 256,
-      "default_volume_speakers": 0.75,
-      "default_volume_iems": 0.25,
-      "hardware_peq": false
-    },
-    "apple_usbc_uk_a2155": {
-      "_comment": "Emergency fallback dongle (0.5 Vrms UK cap, 24-bit/48 kHz max)",
-      "match_regex": "Apple.*USB-C|05ac|CS46L06",
-      "usb_vid_pid": "05ac:*",
-      "chipset": "CS46L06",
-      "alsa_device": "hw:CARD=USB,DEV=0",
-      "alsa_card": "USB",
-      "max_pcm_hz": 48000,
-      "dsd_dop_support": [],
-      "vrms_se": 0.5,
-      "target_period_frames": 96,
-      "fallback_period_frames": 128,
-      "default_volume_speakers": 1.00,
-      "default_volume_iems": 0.30,
-      "hardware_peq": false
+    "aarch64_rk3326_default_121": {
+      "arch": "aarch64",
+      "topology": "1:2:1",
+      "audio_core": 0,
+      "vulkan_core": 1,
+      "jit_cores": [2],
+      "housekeeping_core": 3,
+      "ddr_mhz": 720,
+      "zram_mib": 1024,
+      "dac_gain_profile": "hiby_fc3_1v3_safe"
     }
   }
 }
