@@ -18,6 +18,12 @@ jobs:
       - name: Checkout ax-sdk
         uses: actions/checkout@v5
 
+      - name: Validate JSON and shell scripts
+        run: |
+          python3 -m json.tool config/hardware_profiles.json > /dev/null
+          bash -n tools/ax_doctor.sh
+          bash -n tools/make_ax_snapshot.sh
+
       - name: Configure, Build & Stage SDK (Linux)
         run: |
           cmake -S . -B build -G Ninja \
@@ -28,6 +34,7 @@ jobs:
           cmake --build build --parallel
           cmake --install build
           cp -f config/hardware_profiles.json "${{ github.workspace }}/dist/ax-sdk-linux-x86_64/"
+          cp -f tools/ax_doctor.sh tools/make_ax_snapshot.sh "${{ github.workspace }}/dist/ax-sdk-linux-x86_64/"
 
       - name: Upload Linux SDK Artifact
         uses: actions/upload-artifact@v4
@@ -55,6 +62,7 @@ jobs:
           cmake --build build --parallel
           cmake --install build
           Copy-Item -Force config/hardware_profiles.json "${{ github.workspace }}/dist/ax-sdk-windows-x86_64/"
+          Copy-Item -Force tools/check_hardware.ps1 "${{ github.workspace }}/dist/ax-sdk-windows-x86_64/" -ErrorAction SilentlyContinue
 
       - name: Upload Windows SDK Artifact
         uses: actions/upload-artifact@v4
