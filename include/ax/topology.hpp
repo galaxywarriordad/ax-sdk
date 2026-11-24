@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 #if defined(__linux__)
 #include <pthread.h>
@@ -10,10 +11,34 @@
 
 namespace ax::topology {
 
+enum class Domain : std::uint8_t {
+	Audio = 0,
+	Vulkan = 1,
+	Jit = 2,
+	Housekeeping = 3,
+};
+
+struct SiliconProfile {
+	std::uint32_t physical_cores = 0;
+	std::uint32_t logical_threads = 0;
+	std::uint64_t audio_mask = 0;
+	std::uint64_t vulkan_mask = 0;
+	std::uint64_t jit_mask = 0;
+	std::uint64_t housekeeping_mask = 0;
+	bool has_smt = false;
+	bool is_hybrid = false;
+	std::string vendor;
+	std::string model_name;
+};
+
 inline constexpr std::uint32_t kAudioCoreId = 0;
 inline constexpr std::uint32_t kVideoScanoutCoreId = 1;
 inline constexpr std::uint32_t kHousekeepingCoreId = 5;
 inline constexpr std::uint64_t kHousekeepingCoreMask = (1ULL << kHousekeepingCoreId);
+
+[[nodiscard]] SiliconProfile ProbeHostSiliconOnce() noexcept;
+[[nodiscard]] SiliconProfile DetectHostSilicon() noexcept;
+bool PinCurrentThread(Domain domain, int realtime_priority = 0) noexcept;
 
 inline bool pin_thread_to_core(std::uint32_t core_id) noexcept {
 #if defined(__linux__)
