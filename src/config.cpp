@@ -1,155 +1,146 @@
-#include "ax/config.hpp"
+#include "ax/topology.hpp"
 
-#include <cctype>
-#include <cstdlib>
+#include <algorithm>
+#include <cstdint>
 #include <fstream>
+#include <mutex>
 #include <string>
-#include <string_view>
+#include <thread>
 
-namespace ax {
+#if defined(__linux__)
+#include <pthread.h>
+#include <sched.h>
+#include <unistd.h>
+#endif
+
+namespace ax::topology {
 namespace {
 
-std::string Trim(std::string_view sv) {
-  while (!sv.empty() && std::isspace(static_cast<unsigned char>(sv.front()))) {
-    sv.remove_prefix(1);
+std::once_flag g_probe_once_flag;
+SiliconProfile g_cached_profile;
+
+void PopulateCpuInfo(SiliconProfile& profile) noexcept {
+  try {
+    std::ifstream cpuinfo("/proc/cpuinfo");
+    if (!cpuinfo.is_open()) {
+      return;
+    }
+
+    std::string line;
+    while (std::getline(cpuinfo, line)) {
+      if (profile.vendor.empty() && line.rfind("vendor_id", 0) == 0) {
+        const auto pos = line.find(':');
+        if (pos != std::string::npos) {
+          profile.vendor = line.substr(pos + 2);
+        }
+      } else if (profile.model_name.empty() && line.rfind("model name", 0) == 0) {
+        const auto pos = line.find(':');
+        if (pos != std::string::npos) {
+          profile.model_name = line.substr(pos + 2);
+        }
+      }
+    }
+  } catch (...) {
   }
-  while (!sv.empty() && std::isspace(static_cast<unsigned char>(sv.back()))) {
-    sv.remove_suffix(1);
-  }
-  return std::string(sv);
 }
 
-std::string ToLower(std::string_view sv) {
-  std::string out(sv);
-  for (char& ch : out) {
-    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+SiliconProfile DetectInternal() noexcept {
+  SiliconProfile p{};
+  const unsigned int hw_threads = std::max(1u, std::thread::hardware_concurrency());
+  p.logical_threads = static_cast<std::uint32_t>(hw_threads);
+  p.physical_cores = p.logical_threads;
+  p.has_smt = false;
+  p.is_hybrid = false;
+
+  if (p.physical_cores >= 6) {
+    p.audio_mask = (1ULL << kAudioCoreId);
+    p.vulkan_mask = (1ULL << kVideoScanoutCoreId);
+    p.jit_mask = (1ULL << 2) | (1ULL << 3) | (1ULL << 4);
+    p.housekeeping_mask = kHousekeepingCoreMask;
+  } else if (p.physical_cores >= 4) {
+    p.audio_mask = (1ULL << 0);
+    p.vulkan_mask = (1ULL << 1);
+    p.jit_mask = (1ULL << 2);
+    p.housekeeping_mask = (1ULL << 3);
+  } else {
+    const std::uint64_t all_mask = (p.physical_cores >= 64)
+        ? ~0ULL
+        : ((1ULL << p.physical_cores) - 1ULL);
+    p.audio_mask = all_mask;
+    p.vulkan_mask = all_mask;
+    p.jit_mask = all_mask;
+    p.housekeeping_mask = all_mask;
   }
-  return out;
+
+  PopulateCpuInfo(p);
+  return p;
 }
 
-bool ParseBool(std::string_view raw, bool& out) noexcept {
-  const std::string v = ToLower(Trim(raw));
-  if (v == "1" || v == "true" || v == "yes" || v == "on") {
-    out = true;
-    return true;
+std::uint64_t MaskForDomain(const SiliconProfile& p, Domain domain) noexcept {
+  switch (domain) {
+    case Domain::Audio:
+      return p.audio_mask;
+    case Domain::Vulkan:
+      return p.vulkan_mask;
+    case Domain::Jit:
+      return p.jit_mask;
+    case Domain::Housekeeping:
+      return p.housekeeping_mask;
   }
-  if (v == "0" || v == "false" || v == "no" || v == "off") {
-    out = false;
-    return true;
-  }
-  return false;
-}
-
-bool ParseInt(std::string_view raw, int& out) noexcept {
-  const std::string v = Trim(raw);
-  if (v.empty()) {
-    return false;
-  }
-  char* end = nullptr;
-  const long val = std::strtol(v.c_str(), &end, 10);
-  if (end == v.c_str() || *end != '\0') {
-    return false;
-  }
-  out = static_cast<int>(val);
-  return true;
-}
-
-FeatureOverride ParseFeatureOverride(std::string_view raw) noexcept {
-  const std::string v = ToLower(Trim(raw));
-  if (v == "1" || v == "true" || v == "enabled" || v == "enable" || v == "on" || v == "force_on") {
-    return FeatureOverride::Enabled;
-  }
-  if (v == "0" || v == "false" || v == "disabled" || v == "disable" || v == "off" || v == "force_off") {
-    return FeatureOverride::Disabled;
-  }
-  return FeatureOverride::Auto;
-}
-
-ThreadPriorityTier ParsePriorityTier(std::string_view raw) noexcept {
-  const std::string v = ToLower(Trim(raw));
-  if (v == "3" || v == "housekeeping" || v == "idle" || v == "low") {
-    return ThreadPriorityTier::Housekeeping;
-  }
-  if (v == "2" || v == "realtime_audio" || v == "realtimeaudio" || v == "critical" || v == "high") {
-    return ThreadPriorityTier::RealtimeAudio;
-  }
-  if (v == "1" || v == "elevated" || v == "above_normal") {
-    return ThreadPriorityTier::Elevated;
-  }
-  return ThreadPriorityTier::Normal;
+  return 0;
 }
 
 } // namespace
 
-bool LoadEngineConfig(std::string_view path, EngineConfig& out_config) noexcept {
-  try {
-    std::ifstream file{std::string(path)};
-    if (!file.is_open()) {
-      return false;
-    }
-
-    std::string line;
-    while (std::getline(file, line)) {
-      const std::size_t hash_pos = line.find('#');
-      if (hash_pos != std::string::npos) {
-        line.erase(hash_pos);
-      }
-      const std::size_t semi_pos = line.find(';');
-      if (semi_pos != std::string::npos) {
-        line.erase(semi_pos);
-      }
-      const std::string trimmed = Trim(line);
-      if (trimmed.empty() || trimmed.front() == '[') {
-        continue;
-      }
-
-      const std::size_t eq_pos = trimmed.find('=');
-      if (eq_pos == std::string::npos) {
-        continue;
-      }
-
-      const std::string key = ToLower(Trim(std::string_view(trimmed).substr(0, eq_pos)));
-      const std::string val = Trim(std::string_view(trimmed).substr(eq_pos + 1));
-
-      bool b = false;
-      int n = 0;
-
-      if (key == "enable_thread_affinity_masks" && ParseBool(val, b)) {
-        out_config.enable_thread_affinity_masks = b;
-      } else if (key == "enforce_strict_core_clamps" && ParseBool(val, b)) {
-        out_config.enforce_strict_core_clamps = b;
-      } else if (key == "min_cores_for_isolation_split" && ParseInt(val, n)) {
-        out_config.min_cores_for_isolation_split = n;
-      } else if (key == "enable_proportional_scaler" && ParseBool(val, b)) {
-        out_config.enable_proportional_scaler = b;
-      } else if (key == "core_ratio_audio_gpu" && ParseInt(val, n)) {
-        out_config.core_ratio.audio_gpu = n;
-      } else if (key == "core_ratio_guest_jit" && ParseInt(val, n)) {
-        out_config.core_ratio.guest_jit = n;
-      } else if (key == "core_ratio_aux_quarantine" && ParseInt(val, n)) {
-        out_config.core_ratio.aux_quarantine = n;
-      } else if (key == "maxwell_safe_ubo_passthrough") {
-        out_config.maxwell_safe_ubo_passthrough = ParseFeatureOverride(val);
-      } else if (key == "intel_qsv_video_offload") {
-        out_config.intel_qsv_video_offload = ParseFeatureOverride(val);
-      } else if (key == "vram_shield_prune_trigger_mb" && ParseInt(val, n)) {
-        out_config.vram_shield_prune_trigger_mb = n;
-      } else if (key == "vram_shield_ceiling_mb" && ParseInt(val, n)) {
-        out_config.vram_shield_ceiling_mb = n;
-      } else if (key == "vram_shield_lsfg_ceiling_mb" && ParseInt(val, n)) {
-        out_config.vram_shield_lsfg_ceiling_mb = n;
-      } else if (key == "bar1_staging_cap_mb" && ParseInt(val, n)) {
-        out_config.bar1_staging_cap_mb = n;
-      } else if (key == "audio_priority_tier") {
-        out_config.audio_priority_tier = ParsePriorityTier(val);
-      } else if (key == "housekeeping_priority_tier") {
-        out_config.housekeeping_priority_tier = ParsePriorityTier(val);
-      }
-    }
-    return true;
-  } catch (...) {
-    return false;
-  }
+SiliconProfile ProbeHostSiliconOnce() noexcept {
+  std::call_once(g_probe_once_flag, []() {
+    g_cached_profile = DetectInternal();
+  });
+  return g_cached_profile;
 }
 
-} // namespace ax
+SiliconProfile DetectHostSilicon() noexcept {
+  return ProbeHostSiliconOnce();
+}
+
+bool PinCurrentThread(Domain domain, int realtime_priority) noexcept {
+  const SiliconProfile profile = ProbeHostSiliconOnce();
+  const std::uint64_t mask = MaskForDomain(profile, domain);
+  if (mask == 0) {
+    return false;
+  }
+
+#if defined(__linux__)
+  cpu_set_t cpuset;
+  CPU_ZERO(&cpuset);
+  bool any_set = false;
+  for (int cpu = 0; cpu < CPU_SETSIZE && cpu < 64; ++cpu) {
+    if ((mask & (1ULL << cpu)) != 0ULL) {
+      CPU_SET(cpu, &cpuset);
+      any_set = true;
+    }
+  }
+  if (!any_set) {
+    return false;
+  }
+
+  bool ok = (pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset) == 0);
+  if (!ok) {
+    ok = (sched_setaffinity(0, sizeof(cpuset), &cpuset) == 0);
+  }
+
+  if (realtime_priority > 0) {
+    sched_param sp{};
+    sp.sched_priority = realtime_priority;
+    if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp) != 0) {
+      ok = false;
+    }
+  }
+  return ok;
+#else
+  (void)realtime_priority;
+  return false;
+#endif
+}
+
+} // namespace ax::topology
