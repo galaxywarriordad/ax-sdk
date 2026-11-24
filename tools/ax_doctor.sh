@@ -17,7 +17,6 @@ VERSION_STR="$(cat /proc/version 2>/dev/null || true)"
 
 printf "=== AX Doctor Self-Audit (%s | %s) ===\n" "$ARCH" "$KERNEL_REL"
 
-# 1. Real-time kernel & boot isolation parameters (2:3:1 x86_64 vs 1:2:1 RK3326 aarch64)
 if printf "%s" "$VERSION_STR" | grep -qiE "PREEMPT_RT|-rt"; then
   pass "Kernel RT" "PREEMPT_RT detected ($KERNEL_REL)"
 else
@@ -52,13 +51,11 @@ case "$ARCH" in
     ;;
 esac
 
-# 2. CPU governors & SMT/core layout
 if [[ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor ]]; then
   gov0="$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || true)"
   [[ "$gov0" == "performance" ]] && pass "CPU0 governor" "$gov0" || warn "CPU0 governor" "$gov0 (expected performance)"
 fi
 
-# 3. Aligned IRQ & threaded irq/<N>-* affinity check
 check_irq_steering() {
   local arch="$1"
   local io_core_mask="8"
@@ -111,7 +108,6 @@ check_irq_steering() {
 
 check_irq_steering "$ARCH"
 
-# 4. SCHED_FIFO priority 80 & HugeTLB / ZRAM limits
 rtprio_limit="$(ulimit -r 2>/dev/null || echo 0)"
 if [[ "$rtprio_limit" -ge 80 || "$(id -u)" -eq 0 ]]; then
   pass "SCHED_FIFO 80" "Permitted (ulimit -r: $rtprio_limit, uid: $(id -u))"
@@ -136,7 +132,6 @@ else
   warn "ZRAM" "/dev/zram0 not found"
 fi
 
-# 5. Exclusive DAC lockfile (/run/lock/ax-dac.lock) & ALSA / mixer check (FC3 / RK817)
 check_dac_and_lock() {
   local lock_file="/run/lock/ax-dac.lock"
 
@@ -177,7 +172,6 @@ check_dac_and_lock() {
 
 check_dac_and_lock
 
-# 6. Shared-memory telemetry presence
 if [[ -e /dev/shm/ax_telemetry ]]; then
   pass "AX Telemetry" "/dev/shm/ax_telemetry present"
 else
