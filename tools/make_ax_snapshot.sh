@@ -1,47 +1,50 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-EXPECTED_TAG="v1_36_2"
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-REF="${1:-HEAD}"
-OUT_DIR="${2:-${REPO_ROOT}/dist}"
-
-cd "$REPO_ROOT"
-
-if ! git rev-parse --verify "${REF}^{commit}" >/dev/null 2>&1; then
-  printf "[FAIL] Invalid git ref: %s\n" "$REF" >&2
-  exit 1
-fi
-
-REPO_NAME="$(basename "$REPO_ROOT")"
-SHORT_SHA="$(git rev-parse --short=12 "$REF")"
-CLEAN_TAG="$(git describe --tags --exact-match "$REF" 2>/dev/null || printf "%s" "$SHORT_SHA")"
-ARCHIVE_BASE="${REPO_NAME}-${CLEAN_TAG}"
-ARCHIVE_PATH="${OUT_DIR}/${ARCHIVE_BASE}.tar.gz"
-CHECKSUM_PATH="${ARCHIVE_PATH}.sha256"
-
-# Verify pinned v1_36_2 SDK tag in CMakeLists.txt if FetchContent/ax-sdk is referenced
-if [[ -f "${REPO_ROOT}/CMakeLists.txt" ]] && grep -qiE 'ax_sdk|ax-sdk' "${REPO_ROOT}/CMakeLists.txt"; then
-  if ! grep -qE "GIT_TAG[[:space:]]+${EXPECTED_TAG}([[:space:]]|\))" "${REPO_ROOT}/CMakeLists.txt"; then
-    printf "[FAIL] CMakeLists.txt does not pin ax-sdk to %s\n" "$EXPECTED_TAG" >&2
-    exit 1
-  fi
-  printf "[PASS] Verified %s SDK tag pin in CMakeLists.txt\n" "$EXPECTED_TAG"
-fi
-
-mkdir -p "$OUT_DIR"
-
-# Export clean source tree via git archive (excludes .git and local build artifacts automatically)
-git archive --format=tar --prefix="${ARCHIVE_BASE}/" "$REF" | gzip -9 > "$ARCHIVE_PATH"
-
-if command -v sha256sum >/dev/null 2>&1; then
-  (cd "$OUT_DIR" && sha256sum "$(basename "$ARCHIVE_PATH")" > "$(basename "$CHECKSUM_PATH")")
-elif command -v shasum >/dev/null 2>&1; then
-  (cd "$OUT_DIR" && shasum -a 256 "$(basename "$ARCHIVE_PATH")" > "$(basename "$CHECKSUM_PATH")")
-else
-  printf "[FAIL] Neither sha256sum nor shasum found\n" >&2
-  exit 1
-fi
-
-printf "[PASS] Created snapshot: %s\n" "$ARCHIVE_PATH"
-printf "[PASS] Wrote checksum:  %s\n" "$CHECKSUM_PATH"
+{
+  "schema_version": "2.1",
+  "sdk_version": "v1_36_2",
+  "profiles": {
+    "x86_64_coffeelake_maxwell_231": {
+      "arch": "x86_64",
+      "topology": "2:3:1",
+      "audio_core": 0,
+      "vulkan_core": 1,
+      "jit_cores": [2, 3, 4],
+      "housekeeping_core": 5,
+      "vram_ceiling_gib": 5.50,
+      "bar1_staging_mib": 192,
+      "igpu_offload": "qsv_vaapi"
+    },
+    "x86_64_quadcore_safe_121": {
+      "arch": "x86_64",
+      "topology": "1:2:1",
+      "audio_core": 0,
+      "vulkan_core": 1,
+      "jit_cores": [2],
+      "housekeeping_core": 3,
+      "vram_ceiling_gib": 3.50,
+      "bar1_staging_mib": 128,
+      "igpu_offload": "vaapi_conservative"
+    },
+    "x86_64_zen_ccx_conservative": {
+      "arch": "x86_64",
+      "topology": "ccx_pinned",
+      "audio_core": 0,
+      "vulkan_core": 1,
+      "jit_cores": [2, 3, 4, 5],
+      "housekeeping_core": 6,
+      "vram_ceiling_gib": 5.50,
+      "bar1_staging_mib": 192,
+      "igpu_offload": "none"
+    },
+    "aarch64_rk3326_default_121": {
+      "arch": "aarch64",
+      "topology": "1:2:1",
+      "audio_core": 0,
+      "vulkan_core": 1,
+      "jit_cores": [2],
+      "housekeeping_core": 3,
+      "ddr_mhz": 720,
+      "zram_mib": 1024,
+      "dac_gain_profile": "hiby_fc3_1v3_safe"
+    }
+  }
+}
