@@ -25,6 +25,7 @@ void PopulateCpuInfo(SiliconProfile& profile) noexcept {
     if (!cpuinfo.is_open()) {
       return;
     }
+
     std::string line;
     while (std::getline(cpuinfo, line)) {
       if (profile.vendor.empty() && line.rfind("vendor_id", 0) == 0) {
@@ -43,7 +44,7 @@ void PopulateCpuInfo(SiliconProfile& profile) noexcept {
   }
 }
 
-SiliconProfile BuildDefaultProfile() noexcept {
+SiliconProfile DetectInternal() noexcept {
   SiliconProfile p{};
   const unsigned int hw_threads = std::max(1u, std::thread::hardware_concurrency());
   p.logical_threads = static_cast<std::uint32_t>(hw_threads);
@@ -93,7 +94,7 @@ std::uint64_t MaskForDomain(const SiliconProfile& p, Domain domain) noexcept {
 
 SiliconProfile ProbeHostSiliconOnce() noexcept {
   std::call_once(g_probe_once_flag, []() {
-    g_cached_profile = BuildDefaultProfile();
+    g_cached_profile = DetectInternal();
   });
   return g_cached_profile;
 }
