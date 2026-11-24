@@ -6,8 +6,6 @@
 
 The **\[AX\] Ecosystem** separates shared low-level C++20 silicon abstractions from platform-, OS-, and emulator-specific repositories so upstream rebases stay clean while hardware isolation logic remains unified across Windows 10/11, bare-metal x86\_64 Linux, and aarch64 handhelds.
 
-# **Paragraph replaced to clear section heading.**
-
 ```
                       +-------------------------------------------------------+
                       |                   ax-sdk (v1_36_2)                    |
