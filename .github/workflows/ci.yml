@@ -71,5 +71,6 @@ jobs:
       - name: Configure and build ax-sdk (Windows clang-cl)
         shell: pwsh
         run: |
+          $env:CXXFLAGS="-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH=1"
           cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DAX_SDK_ENABLE_WARNINGS=ON
           cmake --build build --parallel
