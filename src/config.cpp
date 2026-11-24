@@ -1,6 +1,5 @@
 #include "ax/config.hpp"
 
-#include <algorithm>
 #include <cctype>
 #include <cstdlib>
 #include <fstream>
