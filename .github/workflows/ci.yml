@@ -7,30 +7,69 @@ on:
     branches: [ main ]
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      cpp: ${{ steps.filter.outputs.cpp }}
+      json: ${{ steps.filter.outputs.json }}
+      scripts: ${{ steps.filter.outputs.scripts }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            cpp:
+              - 'CMakeLists.txt'
+              - 'include/**'
+              - 'src/**'
+              - 'ax_toolchain/**'
+            json:
+              - 'config/**'
+            scripts:
+              - 'tools/**'
+
   validate-json:
+    needs: changes
+    if: needs.changes.outputs.json == 'true' || needs.changes.outputs.cpp == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Validate hardware_profiles.json
         run: python3 -m json.tool config/hardware_profiles.json > /dev/null
 
-  build-linux:
-    needs: validate-json
+  lint-scripts:
+    needs: changes
+    if: needs.changes.outputs.scripts == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Check shell script syntax and snapshot dry-run
+        run: |
+          bash -n tools/ax_doctor.sh
+          bash -n tools/make_ax_snapshot.sh
+          ./tools/make_ax_snapshot.sh HEAD /tmp/ax_ci_dist
+          (cd /tmp/ax_ci_dist && sha256sum -c ./*.sha256)
+
+  build-linux:
+    needs: [ changes, validate-json ]
+    if: needs.changes.outputs.cpp == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
       - name: Configure and build ax-sdk (Linux Ninja)
         run: |
-          cmake -B build -G Ninja
-          cmake --build build
+          cmake -B build -G Ninja -DAX_SDK_ENABLE_WARNINGS=ON
+          cmake --build build --parallel
 
   build-windows:
-    needs: validate-json
+    needs: [ changes, validate-json ]
+    if: needs.changes.outputs.cpp == 'true'
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Configure and build ax-sdk (Windows clang-cl)
         shell: pwsh
         run: |
-          cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl
-          cmake --build build
+          cmake -B build -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DAX_SDK_ENABLE_WARNINGS=ON
+          cmake --build build --parallel
