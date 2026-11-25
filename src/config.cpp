@@ -1,146 +1,174 @@
-#include "ax/topology.hpp"
+#include "ax/config.hpp"
 
 #include <algorithm>
-#include <cstdint>
+#include <cctype>
+#include <cstdlib>
 #include <fstream>
-#include <mutex>
 #include <string>
-#include <thread>
+#include <string_view>
 
-#if defined(__linux__)
-#include <pthread.h>
-#include <sched.h>
-#include <unistd.h>
-#endif
+namespace ax {
 
-namespace ax::topology {
 namespace {
 
-std::once_flag g_probe_once_flag;
-SiliconProfile g_cached_profile;
-
-void PopulateCpuInfo(SiliconProfile& profile) noexcept {
-  try {
-    std::ifstream cpuinfo("/proc/cpuinfo");
-    if (!cpuinfo.is_open()) {
-      return;
+std::string_view Trim(std::string_view sv) noexcept {
+    while (!sv.empty() && std::isspace(static_cast<unsigned char>(sv.front()))) {
+        sv.remove_prefix(1);
     }
-
-    std::string line;
-    while (std::getline(cpuinfo, line)) {
-      if (profile.vendor.empty() && line.rfind("vendor_id", 0) == 0) {
-        const auto pos = line.find(':');
-        if (pos != std::string::npos) {
-          profile.vendor = line.substr(pos + 2);
-        }
-      } else if (profile.model_name.empty() && line.rfind("model name", 0) == 0) {
-        const auto pos = line.find(':');
-        if (pos != std::string::npos) {
-          profile.model_name = line.substr(pos + 2);
-        }
-      }
+    while (!sv.empty() && std::isspace(static_cast<unsigned char>(sv.back()))) {
+        sv.remove_suffix(1);
     }
-  } catch (...) {
-  }
+    return sv;
 }
 
-SiliconProfile DetectInternal() noexcept {
-  SiliconProfile p{};
-  const unsigned int hw_threads = std::max(1u, std::thread::hardware_concurrency());
-  p.logical_threads = static_cast<std::uint32_t>(hw_threads);
-  p.physical_cores = p.logical_threads;
-  p.has_smt = false;
-  p.is_hybrid = false;
-
-  if (p.physical_cores >= 6) {
-    p.audio_mask = (1ULL << kAudioCoreId);
-    p.vulkan_mask = (1ULL << kVideoScanoutCoreId);
-    p.jit_mask = (1ULL << 2) | (1ULL << 3) | (1ULL << 4);
-    p.housekeeping_mask = kHousekeepingCoreMask;
-  } else if (p.physical_cores >= 4) {
-    p.audio_mask = (1ULL << 0);
-    p.vulkan_mask = (1ULL << 1);
-    p.jit_mask = (1ULL << 2);
-    p.housekeeping_mask = (1ULL << 3);
-  } else {
-    const std::uint64_t all_mask = (p.physical_cores >= 64)
-        ? ~0ULL
-        : ((1ULL << p.physical_cores) - 1ULL);
-    p.audio_mask = all_mask;
-    p.vulkan_mask = all_mask;
-    p.jit_mask = all_mask;
-    p.housekeeping_mask = all_mask;
-  }
-
-  PopulateCpuInfo(p);
-  return p;
+std::string ToLowerAscii(std::string_view sv) {
+    std::string out(sv);
+    for (char& c : out) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return out;
 }
 
-std::uint64_t MaskForDomain(const SiliconProfile& p, Domain domain) noexcept {
-  switch (domain) {
-    case Domain::Audio:
-      return p.audio_mask;
-    case Domain::Vulkan:
-      return p.vulkan_mask;
-    case Domain::Jit:
-      return p.jit_mask;
-    case Domain::Housekeeping:
-      return p.housekeeping_mask;
-  }
-  return 0;
+bool ParseBoolValue(std::string_view raw, bool fallback) noexcept {
+    const std::string lower = ToLowerAscii(Trim(raw));
+    if (lower == "1" || lower == "true" || lower == "yes" || lower == "on") {
+        return true;
+    }
+    if (lower == "0" || lower == "false" || lower == "no" || lower == "off") {
+        return false;
+    }
+    return fallback;
+}
+
+int ParseIntValue(std::string_view raw, int fallback) noexcept {
+    const std::string trimmed(Trim(raw));
+    if (trimmed.empty()) {
+        return fallback;
+    }
+    char* end_ptr = nullptr;
+    const long val = std::strtol(trimmed.c_str(), &end_ptr, 10);
+    if (end_ptr == trimmed.c_str() || *end_ptr != '\0') {
+        return fallback;
+    }
+    return static_cast<int>(val);
+}
+
+FeatureOverride ParseFeatureOverrideValue(std::string_view raw, FeatureOverride fallback) noexcept {
+    const std::string lower = ToLowerAscii(Trim(raw));
+    if (lower == "auto") {
+        return FeatureOverride::Auto;
+    }
+    if (lower == "enabled" || lower == "enable" || lower == "on" || lower == "true" || lower == "1") {
+        return FeatureOverride::Enabled;
+    }
+    if (lower == "disabled" || lower == "disable" || lower == "off" || lower == "false" || lower == "0") {
+        return FeatureOverride::Disabled;
+    }
+    return fallback;
+}
+
+ThreadPriorityTier ParsePriorityTierValue(std::string_view raw, ThreadPriorityTier fallback) noexcept {
+    const std::string lower = ToLowerAscii(Trim(raw));
+    if (lower == "normal") {
+        return ThreadPriorityTier::Normal;
+    }
+    if (lower == "elevated" || lower == "abovenormal" || lower == "high") {
+        return ThreadPriorityTier::Elevated;
+    }
+    if (lower == "realtimeaudio" || lower == "realtime_audio" || lower == "rt" || lower == "critical") {
+        return ThreadPriorityTier::RealtimeAudio;
+    }
+    if (lower == "housekeeping" || lower == "low" || lower == "belownormal" || lower == "aux") {
+        return ThreadPriorityTier::Housekeeping;
+    }
+    return fallback;
+}
+
+void ParseCoreRatioValue(std::string_view raw, CoreRatioSpec& ratio) noexcept {
+    const std::string_view clean = Trim(raw);
+    const std::size_t first_colon = clean.find(':');
+    if (first_colon == std::string_view::npos) {
+        return;
+    }
+    const std::size_t second_colon = clean.find(':', first_colon + 1);
+    if (second_colon == std::string_view::npos) {
+        return;
+    }
+
+    const int a = ParseIntValue(clean.substr(0, first_colon), ratio.audio_gpu);
+    const int b = ParseIntValue(clean.substr(first_colon + 1, second_colon - (first_colon + 1)), ratio.guest_jit);
+    const int c = ParseIntValue(clean.substr(second_colon + 1), ratio.aux_quarantine);
+
+    if (a > 0 && b > 0 && c > 0) {
+        ratio.audio_gpu = a;
+        ratio.guest_jit = b;
+        ratio.aux_quarantine = c;
+    }
 }
 
 } // namespace
 
-SiliconProfile ProbeHostSiliconOnce() noexcept {
-  std::call_once(g_probe_once_flag, []() {
-    g_cached_profile = DetectInternal();
-  });
-  return g_cached_profile;
-}
-
-SiliconProfile DetectHostSilicon() noexcept {
-  return ProbeHostSiliconOnce();
-}
-
-bool PinCurrentThread(Domain domain, int realtime_priority) noexcept {
-  const SiliconProfile profile = ProbeHostSiliconOnce();
-  const std::uint64_t mask = MaskForDomain(profile, domain);
-  if (mask == 0) {
-    return false;
-  }
-
-#if defined(__linux__)
-  cpu_set_t cpuset;
-  CPU_ZERO(&cpuset);
-  bool any_set = false;
-  for (int cpu = 0; cpu < CPU_SETSIZE && cpu < 64; ++cpu) {
-    if ((mask & (1ULL << cpu)) != 0ULL) {
-      CPU_SET(cpu, &cpuset);
-      any_set = true;
+bool LoadEngineConfig(std::string_view path, EngineConfig& out_config) noexcept {
+    out_config = EngineConfig{};
+    if (path.empty()) {
+        return false;
     }
-  }
-  if (!any_set) {
-    return false;
-  }
 
-  bool ok = (pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset) == 0);
-  if (!ok) {
-    ok = (sched_setaffinity(0, sizeof(cpuset), &cpuset) == 0);
-  }
-
-  if (realtime_priority > 0) {
-    sched_param sp{};
-    sp.sched_priority = realtime_priority;
-    if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp) != 0) {
-      ok = false;
+    std::ifstream file{std::string(path)};
+    if (!file.is_open()) {
+        return false;
     }
-  }
-  return ok;
-#else
-  (void)realtime_priority;
-  return false;
-#endif
+
+    std::string line;
+    while (std::getline(file, line)) {
+        std::string_view sv(line);
+        const std::size_t comment_pos = sv.find_first_of("#;");
+        if (comment_pos != std::string_view::npos) {
+            sv = sv.substr(0, comment_pos);
+        }
+        sv = Trim(sv);
+        if (sv.empty() || sv.front() == '[') {
+            continue;
+        }
+
+        const std::size_t eq_pos = sv.find('=');
+        if (eq_pos == std::string_view::npos) {
+            continue;
+        }
+
+        const std::string key = ToLowerAscii(Trim(sv.substr(0, eq_pos)));
+        const std::string_view val = Trim(sv.substr(eq_pos + 1));
+
+        if (key == "enable_thread_affinity_masks") {
+            out_config.enable_thread_affinity_masks = ParseBoolValue(val, out_config.enable_thread_affinity_masks);
+        } else if (key == "enforce_strict_core_clamps") {
+            out_config.enforce_strict_core_clamps = ParseBoolValue(val, out_config.enforce_strict_core_clamps);
+        } else if (key == "min_cores_for_isolation_split") {
+            out_config.min_cores_for_isolation_split = ParseIntValue(val, out_config.min_cores_for_isolation_split);
+        } else if (key == "enable_proportional_scaler") {
+            out_config.enable_proportional_scaler = ParseBoolValue(val, out_config.enable_proportional_scaler);
+        } else if (key == "core_ratio") {
+            ParseCoreRatioValue(val, out_config.core_ratio);
+        } else if (key == "maxwell_safe_ubo_passthrough") {
+            out_config.maxwell_safe_ubo_passthrough = ParseFeatureOverrideValue(val, out_config.maxwell_safe_ubo_passthrough);
+        } else if (key == "intel_qsv_video_offload") {
+            out_config.intel_qsv_video_offload = ParseFeatureOverrideValue(val, out_config.intel_qsv_video_offload);
+        } else if (key == "vram_shield_prune_trigger_mb") {
+            out_config.vram_shield_prune_trigger_mb = ParseIntValue(val, out_config.vram_shield_prune_trigger_mb);
+        } else if (key == "vram_shield_ceiling_mb") {
+            out_config.vram_shield_ceiling_mb = ParseIntValue(val, out_config.vram_shield_ceiling_mb);
+        } else if (key == "vram_shield_lsfg_ceiling_mb") {
+            out_config.vram_shield_lsfg_ceiling_mb = ParseIntValue(val, out_config.vram_shield_lsfg_ceiling_mb);
+        } else if (key == "bar1_staging_cap_mb") {
+            out_config.bar1_staging_cap_mb = ParseIntValue(val, out_config.bar1_staging_cap_mb);
+        } else if (key == "audio_priority_tier") {
+            out_config.audio_priority_tier = ParsePriorityTierValue(val, out_config.audio_priority_tier);
+        } else if (key == "housekeeping_priority_tier") {
+            out_config.housekeeping_priority_tier = ParsePriorityTierValue(val, out_config.housekeeping_priority_tier);
+        }
+    }
+
+    return true;
 }
 
-} // namespace ax::topology
+} // namespace ax
