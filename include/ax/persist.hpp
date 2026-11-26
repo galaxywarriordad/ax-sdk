@@ -13,6 +13,8 @@ struct AtomicWriteOptions {
     unsigned int file_mode = 0644;
     // Create missing parent directories when true.
     bool create_parent_dirs = true;
+    // Fsync staged file content before rename when true.
+    bool fsync_file = true;
     // Fsync the parent directory after rename (critical for journal-free ext4 /userdata).
     bool fsync_parent_dir = true;
 };
@@ -25,13 +27,13 @@ struct AtomicWriteResult {
 
 // Atomically writes a byte span to `target` via same-directory staging,
 // explicit content sync, atomic rename, and optional parent-directory sync.
-AtomicWriteResult WriteFileAtomic(
+[[nodiscard]] AtomicWriteResult WriteFileAtomic(
     const std::filesystem::path& target,
     std::span<const std::byte> data,
     const AtomicWriteOptions& options = {}) noexcept;
 
 // Convenience overload for text or serialized byte strings.
-AtomicWriteResult WriteFileAtomic(
+[[nodiscard]] AtomicWriteResult WriteFileAtomic(
     const std::filesystem::path& target,
     std::string_view data,
     const AtomicWriteOptions& options = {}) noexcept;
