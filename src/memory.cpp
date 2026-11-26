@@ -27,6 +27,52 @@
 
 namespace ax::memory {
 
+namespace {
+
+void TouchPages(void* base, std::size_t size_bytes, std::size_t page_bytes) noexcept {
+    if (!base || size_bytes == 0) {
+        return;
+    }
+    auto* bytes = static_cast<volatile unsigned char*>(base);
+    const std::size_t step = page_bytes > 0 ? page_bytes : 4096U;
+    for (std::size_t offset = 0; offset < size_bytes; offset += step) {
+        bytes[offset] = bytes[offset];
+    }
+    bytes[size_bytes - 1U] = bytes[size_bytes - 1U];
+}
+
+void LockArenaIfPossible(void* base, std::size_t size_bytes) noexcept {
+#if defined(__linux__)
+    if (base && size_bytes > 0) {
+        (void)::mlock(base, size_bytes);
+    }
+#elif defined(_WIN32)
+    if (base && size_bytes > 0) {
+        (void)::VirtualLock(base, size_bytes);
+    }
+#else
+    (void)base;
+    (void)size_bytes;
+#endif
+}
+
+void UnlockArenaIfPossible(void* base, std::size_t size_bytes) noexcept {
+#if defined(__linux__)
+    if (base && size_bytes > 0) {
+        (void)::munlock(base, size_bytes);
+    }
+#elif defined(_WIN32)
+    if (base && size_bytes > 0) {
+        (void)::VirtualUnlock(base, size_bytes);
+    }
+#else
+    (void)base;
+    (void)size_bytes;
+#endif
+}
+
+} // namespace
+
 ArenaHandle AllocateFastmemArena(std::size_t size_bytes, bool prefer_1gb) noexcept {
     ArenaHandle handle{};
     if (size_bytes == 0) {
@@ -36,7 +82,7 @@ ArenaHandle AllocateFastmemArena(std::size_t size_bytes, bool prefer_1gb) noexce
 #if defined(__linux__)
     constexpr std::size_t kOneGiB = 1ULL << 30;
     constexpr std::size_t kTwoMiB = 2ULL << 20;
-    const int base_flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE;
+    const int base_flags = MAP_PRIVATE | MAP_ANONYMOUS;
 
     if (prefer_1gb && (size_bytes % kOneGiB == 0)) {
         void* ptr = ::mmap(nullptr, size_bytes, PROT_READ | PROT_WRITE,
@@ -45,6 +91,8 @@ ArenaHandle AllocateFastmemArena(std::size_t size_bytes, bool prefer_1gb) noexce
             handle.base = ptr;
             handle.size_bytes = size_bytes;
             handle.active_tier = PageTier::Huge1G;
+            TouchPages(handle.base, handle.size_bytes, kOneGiB);
+            LockArenaIfPossible(handle.base, handle.size_bytes);
             return handle;
         }
     }
@@ -56,6 +104,8 @@ ArenaHandle AllocateFastmemArena(std::size_t size_bytes, bool prefer_1gb) noexce
             handle.base = ptr;
             handle.size_bytes = size_bytes;
             handle.active_tier = PageTier::Huge2M;
+            TouchPages(handle.base, handle.size_bytes, kTwoMiB);
+            LockArenaIfPossible(handle.base, handle.size_bytes);
             return handle;
         }
     }
@@ -65,6 +115,8 @@ ArenaHandle AllocateFastmemArena(std::size_t size_bytes, bool prefer_1gb) noexce
         handle.base = fallback;
         handle.size_bytes = size_bytes;
         handle.active_tier = PageTier::Standard4K;
+        TouchPages(handle.base, handle.size_bytes, 4096U);
+        LockArenaIfPossible(handle.base, handle.size_bytes);
     }
     return handle;
 
@@ -78,6 +130,8 @@ ArenaHandle AllocateFastmemArena(std::size_t size_bytes, bool prefer_1gb) noexce
             handle.base = ptr;
             handle.size_bytes = size_bytes;
             handle.active_tier = (min_large >= (1ULL << 30)) ? PageTier::Huge1G : PageTier::Huge2M;
+            TouchPages(handle.base, handle.size_bytes, min_large);
+            LockArenaIfPossible(handle.base, handle.size_bytes);
             return handle;
         }
     }
@@ -89,6 +143,8 @@ ArenaHandle AllocateFastmemArena(std::size_t size_bytes, bool prefer_1gb) noexce
         handle.base = fallback;
         handle.size_bytes = size_bytes;
         handle.active_tier = PageTier::Standard4K;
+        TouchPages(handle.base, handle.size_bytes, 4096U);
+        LockArenaIfPossible(handle.base, handle.size_bytes);
     }
     return handle;
 
@@ -105,6 +161,8 @@ void FreeFastmemArena(ArenaHandle& arena) noexcept {
         return;
     }
 
+    UnlockArenaIfPossible(arena.base, arena.size_bytes);
+
 #if defined(__linux__)
     if (arena.size_bytes > 0) {
         (void)::munmap(arena.base, arena.size_bytes);
@@ -119,3 +177,5 @@ void FreeFastmemArena(ArenaHandle& arena) noexcept {
 }
 
 } // namespace ax::memory
+
+Reply `y` when ready for **6 of 9: `ax-sdk/src/topology.cpp`**.
