@@ -177,5 +177,3 @@ void FreeFastmemArena(ArenaHandle& arena) noexcept {
 }
 
 } // namespace ax::memory
-
-Reply `y` when ready for **6 of 9: `ax-sdk/src/topology.cpp`**.
