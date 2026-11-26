@@ -6,6 +6,8 @@
 
 The Silicon Preservation Society ecosystem is engineered around **deterministic hardware preservation**: keeping proven x86\_64 and ARM64 computing hardware out of landfills by eliminating OS background jitter, audio resampling, and uncoordinated thread scheduling.
 
+* **Deterministic Memory & Diagnostic Governance:** Memory allocation, `1G`/`2M` HugeTLB reserves, LZ4 `zram`, `toram` `EROFS`/`SquashFS` budgets (`< 512 MB` on `Piccolo-AX`, `< 140–180 MB` on `Piccolo-2go`), and `VkVramShield` ceilings follow explicit, repeatable rules rather than dynamic AI/ML guessing or background inference daemons. `ax_doctor` serves strictly as a read-only, on-demand pre-flight and diagnostic check (without background polling or silent mutation), while any AI/log tooling stays offline on CPU/RAM outside the live appliance image and GPU VRAM.
+
 All nine repositories enforce a strict **Policy-in-SDK / Adapter-in-Consumer** boundary across three runtime tiers:
 
 1. **Shared Runtime Core (`ax-sdk`):** Dependency-free C++20 primitives for physical CPU topology discovery, core/IRQ isolation masks, engine configuration parsing, HugeTLB fastmem, VRAM guardrails, and hardware video offloading.  
@@ -14,22 +16,22 @@ All nine repositories enforce a strict **Policy-in-SDK / Adapter-in-Consumer** b
 
 ```
 +-----------------------------------------------------------------------------------+
-|                        CONSUMER WORKLOADS & ADAPTERS                              |
-|  FLAC_AX  |  Eden-Espresso-Wave-AX  |  Cemu-Latte-AX  |  Amiberry-AX  | Gen-X-AX  |
+| CONSUMER WORKLOADS & ADAPTERS                                                     |
+| FLAC_AX | Eden-Espresso-Wave-AX | Cemu-Latte-AX | Amiberry-AX | Gen-X-AX          |
 +-----------------------------------------------------------------------------------+
-                                         |
-                                 links against (ax::core)
-                                         v
+                                   |
+                        links against (ax::core)
+                                   v
 +-----------------------------------------------------------------------------------+
-|                         SHARED RUNTIME CORE (`ax-sdk`)                            |
-|   ax::topology (2:3:1 / 1:2:1)  |  ax::EngineConfig  |  HugeTLB & VRAM Shield     |
+| SHARED RUNTIME CORE (`ax-sdk`)                                                    |
+| ax::topology (2:3:1 / 1:2:1) | ax::EngineConfig | HugeTLB & VRAM Shield         |
 +-----------------------------------------------------------------------------------+
-                                         |
-                             executes on bare metal
-                                         v
+                                   |
+                           executes on bare metal
+                                   v
 +-----------------------------------------------------------------------------------+
-|                    BARE-METAL OS & WORKBENCH ENVIRONMENTS                         |
-|    Piccolo-AX (x86_64 6.12-rt)   |   Piccolo-2go (ARM64 RK3326)   |  Desktop X11  |
+| BARE-METAL OS & WORKBENCH ENVIRONMENTS                                            |
+| Piccolo-AX (x86_64 6.12-rt) | Piccolo-2go (ARM64 RK3326) | Desktop X11          |
 +-----------------------------------------------------------------------------------+
 ```
 
@@ -43,7 +45,7 @@ Engineered for 6-core desktop processors (such as the Intel Core i5-9600K and i5
 
 | Core(s) | Affinity Mask | Scheduling Class | Assigned Workload Domain |
 | :---- | :---- | :---- | :---- |
-| **Core 0** | `0x01` | `SCHED_FIFO` (Priority 80\) | Bit-perfect USB/ALSA/ASIO audio and low-latency input polling |
+| **Core 0** | `0x01` | `SCHED_FIFO` (Priority 80+) | Bit-perfect USB/ALSA/ASIO audio and low-latency input polling |
 | **Core 1** | `0x02` | `SCHED_OTHER` / Isolated | Vulkan / OpenGL / DRM scanout and presentation |
 | **Cores 2–4** | `0x1C` | `SCHED_OTHER` / Isolated | Emulator CPU/JIT execution and real-time DSP synthesis |
 | **Core 5** | `0x20` | `SCHED_OTHER` (Housekeeping) | Storage I/O, kernel housekeeping, TUI launchers, and batch transcoding (`ax-encode-2go`) |
@@ -68,7 +70,7 @@ Engineered for quad-core ARM Cortex-A35 handhelds (`RK3326` — `BATLEXP G350` a
 
 * **Repository:** [`galaxywarriordad/ax-sdk`](https://github.com/galaxywarriordad/ax-sdk)  
 * **Role:** Dependency-free C++20 shared runtime library (`ax_core`).  
-* **Architecture:** Exposes `ax::topology` (`Domain`, `SiliconProfile`, `ProbeHostSiliconOnce`, `DetectHostSilicon`, `PinCurrentThread`, and `pin_to_housekeeping_core5()`), `ax::EngineConfig` (`CoreRatioSpec`, `FeatureOverride`, `ThreadPriorityTier`, VRAM shield thresholds), HugeTLB fastmem helpers, and hardware offload flags.  
+* **Architecture:** Exposes `ax::topology` (`Domain`, `SiliconProfile`, `ProbeHostSiliconOnce`, `DetectHostSilicon`, `PinCurrentThread`, and `pin_to_housekeeping_core5()`), `ax::EngineConfig` (`CoreRatioSpec`, `FeatureOverride`, `ThreadPriorityTier`, VRAM shield thresholds), HugeTLB fastmem helpers, hardware offload flags, and read-only pre-flight/diagnostic tooling (`ax_doctor.sh`).  
 * **Interface Contract:** Public headers under `include/ax/` maintain strict backward compatibility across all downstream CMake `FetchContent` consumers.
 
 ---
@@ -78,7 +80,7 @@ Engineered for quad-core ARM Cortex-A35 handhelds (`RK3326` — `BATLEXP G350` a
 #### `Piccolo-AX`
 
 * **Repository:** [`galaxywarriordad/Piccolo-AX`](https://github.com/galaxywarriordad/Piccolo-AX)  
-* **Role:** Bare-metal `x86_64` Buildroot/Batocera Linux (`6.12-rt` real-time kernel) `toram` EROFS console and A/V appliance (`< 300 MB` image footprint).  
+* **Role:** Bare-metal `x86_64` Buildroot/Batocera Linux (`6.12-rt` real-time kernel) `toram` EROFS console and A/V appliance (`< 512 MB` `EROFS` budget).  
 * **Architecture:** Enforces the `2:3:1` physical core/IRQ topology at boot via kernel command-line parameters and bootloader mode dispatch (`limine.conf` / `ax-mode-cli`). Includes `/usr/bin/ax-encode-2go`, a Core 5 (`taskset -c 5`) transcoding pipeline pairing Intel QSV (`h264_qsv`, Main profile, zero B-frames, VBV-capped) with NVIDIA CUDA Lanczos downsampling and IPS image tuning to produce `640x480` (`60 fps` / `30 fps`) \+ `48000 Hz` stereo `AAC` / `FLAC` media for `Piccolo-2go`.
 
 #### `Piccolo-2go`
@@ -111,7 +113,7 @@ Engineered for quad-core ARM Cortex-A35 handhelds (`RK3326` — `BATLEXP G350` a
 
 * **Repository:** [`galaxywarriordad/Eden-Espresso-Wave-AX`](https://github.com/galaxywarriordad/Eden-Espresso-Wave-AX)  
 * **Role:** Hardware-locked fork of the Eden Nintendo Switch emulator.  
-* **Architecture:** Built with LLVM `clang-cl`, ThinLTO, and 3-stage Profile-Guided Optimization (PGO), integrating Elastic `2:3:1` core/IRQ partitioning, zero-copy Intel QSV video offloading, Maxwell-safe VRAM guardrails (`5.50 GB` ceiling on 6 GB GPUs), and Steinberg ASIO / ALSA low-latency audio.
+* **Architecture:** Built with LLVM `clang-cl`, ThinLTO, and 3-stage Profile-Guided Optimization (PGO), integrating Elastic `2:3:1` core/IRQ partitioning, zero-copy Intel QSV video offloading, Maxwell-safe VRAM guardrails (`5.50 GiB` ceiling on 6 GB GPUs / `5.00 GiB` proactive async prune trigger), and Steinberg ASIO / ALSA low-latency audio.
 
 #### `Cemu-Latte-AX`
 
@@ -129,7 +131,7 @@ Engineered for quad-core ARM Cortex-A35 handhelds (`RK3326` — `BATLEXP G350` a
 
 * **Repository:** [`galaxywarriordad/Generation-X-AX`](https://github.com/galaxywarriordad/Generation-X-AX)  
 * **Role:** Unified C++20 `[AX]` adapter suite for classic consoles and 16-bit microcomputers.  
-* **Architecture:** Wraps `RMG` (Nintendo 64), `BlastEm` (Sega Mega Drive), `Cannonball` (Sega OutRun), and `Hatari-AX` (Atari ST) behind consistent `ax::core` topology pinning, HugeTLB fastmem, and lock-free audio/video synchronization adapters.
+* **Architecture:** Wraps `RMG` (Nintendo 64), `BlastEm` (Sega Mega Drive), `Cannonball` (Sega OutRun), `EDuke32`, `Frontier: Elite II`, `Flycast` (Dreamcast/NAOMI), and `Hatari-AX` (Atari ST) behind consistent `ax::core` topology pinning, HugeTLB fastmem, and lock-free audio/video synchronization adapters.
 
 ---
 
@@ -137,4 +139,4 @@ Engineered for quad-core ARM Cortex-A35 handhelds (`RK3326` — `BATLEXP G350` a
 
 * **Single Source of Truth:** Architectural specifications live in `ax-sdk/docs/ECOSYSTEM_ARCHITECTURE.md`; downstream repositories embed a concise topology summary and link directly to this document.  
 * **ABI & Header Stability:** Extensions to `ax-sdk` (`include/ax/topology.hpp`, `include/ax/config.hpp`) are strictly additive so downstream `FetchContent` builds remain green across all C++20 consumers.  
-* **Automated CI Gates:** Changes to build systems, core isolation scripts, and media pipelines (`test-ax-encode-2go.yml`, `build-release.yml`, `build-sdcard-image.yml`) are verified via automated static analysis (`shellcheck`), stream inspection (`ffprobe`), and headless CMake/Ninja builds.
+* **Automated CI Gates:** Changes to build systems, core isolation scripts, and media pipelines (`test-ax-encode-2go.yml`, `build-release.yml`, `build-sdcard-image.yml`, `test-snes-retro.yml`) are verified via automated static analysis (`shellcheck`), stream inspection (`ffprobe`), and headless CMake/Ninja builds.
