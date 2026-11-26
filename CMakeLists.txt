@@ -5,8 +5,29 @@ option(AX_SDK_ENABLE_WARNINGS "Enable compiler warnings for ax-sdk targets" OFF)
 option(AX_SDK_WERROR "Treat compiler warnings as errors when AX_SDK_ENABLE_WARNINGS is ON" OFF)
 option(AX_SDK_STAGE_SOURCE_TREE "Install ax-sdk source tree into <prefix>/share/ax-sdk/src" OFF)
 
-file(GLOB_RECURSE AX_SDK_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
-list(FILTER AX_SDK_SOURCES EXCLUDE REGEX ".*/main\\.cpp$")
+set(_ax_sdk_explicit_sources
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/config.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/memory.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/persist.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/telemetry.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/topology.cpp"
+)
+
+set(AX_SDK_SOURCES "")
+foreach(_src IN LISTS _ax_sdk_explicit_sources)
+  if(EXISTS "${_src}")
+    list(APPEND AX_SDK_SOURCES "${_src}")
+  endif()
+endforeach()
+
+file(GLOB_RECURSE _ax_sdk_discovered CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+list(FILTER _ax_sdk_discovered EXCLUDE REGEX ".*/main\\.cpp$")
+foreach(_src IN LISTS _ax_sdk_discovered)
+  list(FIND AX_SDK_SOURCES "${_src}" _found_idx)
+  if(_found_idx EQUAL -1)
+    list(APPEND AX_SDK_SOURCES "${_src}")
+  endif()
+endforeach()
 
 if(AX_SDK_SOURCES)
   add_library(ax_core STATIC ${AX_SDK_SOURCES})
@@ -42,7 +63,9 @@ if(AX_SDK_SOURCES)
   set(_ax_clang_toolchain_helper "${CMAKE_CURRENT_SOURCE_DIR}/ax_toolchain/piccolo-clang-x86_64.cmake")
   if(EXISTS "${_ax_clang_toolchain_helper}")
     include("${_ax_clang_toolchain_helper}")
-  elseif(AX_SDK_ENABLE_WARNINGS)
+  endif()
+
+  if(AX_SDK_ENABLE_WARNINGS)
     if(MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
       target_compile_options(ax_core PRIVATE /W4)
       if(AX_SDK_WERROR)
