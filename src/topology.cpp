@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <fstream>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 
@@ -44,13 +45,37 @@ void PopulateCpuInfo(SiliconProfile& profile) noexcept {
   }
 }
 
+void PopulateCoreTopology(SiliconProfile& profile, unsigned int hw_threads) noexcept {
+  profile.logical_threads = static_cast<std::uint32_t>(hw_threads);
+  profile.physical_cores = profile.logical_threads;
+  profile.has_smt = false;
+  profile.is_hybrid = false;
+
+#if defined(__linux__)
+  try {
+    std::set<std::string> unique_groups;
+    for (unsigned int cpu = 0; cpu < hw_threads; ++cpu) {
+      const std::string path =
+          "/sys/devices/system/cpu/cpu" + std::to_string(cpu) + "/topology/thread_siblings_list";
+      std::ifstream sib_file(path);
+      std::string siblings;
+      if (sib_file.is_open() && std::getline(sib_file, siblings) && !siblings.empty()) {
+        unique_groups.insert(siblings);
+      }
+    }
+    if (!unique_groups.empty()) {
+      profile.physical_cores = static_cast<std::uint32_t>(unique_groups.size());
+      profile.has_smt = (profile.physical_cores < profile.logical_threads);
+    }
+  } catch (...) {
+  }
+#endif
+}
+
 SiliconProfile DetectInternal() noexcept {
   SiliconProfile p{};
   const unsigned int hw_threads = std::max(1u, std::thread::hardware_concurrency());
-  p.logical_threads = static_cast<std::uint32_t>(hw_threads);
-  p.physical_cores = p.logical_threads;
-  p.has_smt = false;
-  p.is_hybrid = false;
+  PopulateCoreTopology(p, hw_threads);
 
   if (p.physical_cores >= 6) {
     p.audio_mask = (1ULL << kAudioCoreId);
@@ -124,19 +149,20 @@ bool PinCurrentThread(Domain domain, int realtime_priority) noexcept {
     return false;
   }
 
-  bool ok = (pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset) == 0);
-  if (!ok) {
-    ok = (sched_setaffinity(0, sizeof(cpuset), &cpuset) == 0);
+  const bool affinity_ok =
+      (pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset) == 0) ||
+      (sched_setaffinity(0, sizeof(cpuset), &cpuset) == 0);
+  if (!affinity_ok) {
+    return false;
   }
 
   if (realtime_priority > 0) {
     sched_param sp{};
     sp.sched_priority = realtime_priority;
-    if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp) != 0) {
-      ok = false;
-    }
+    // Keep affinity pinning active even if CAP_SYS_NICE / RLIMIT_RTPRIO denies SCHED_FIFO.
+    (void)pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
   }
-  return ok;
+  return true;
 #else
   (void)realtime_priority;
   return false;
